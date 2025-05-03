@@ -1,38 +1,42 @@
 # app/api.py
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from app.agent import graph
-import requests
-import io
-import pandas as pd
 
 class InvokeRequest(BaseModel):
-    file_path: str
+    tweets_path: str
+    support_path: str
+    tweets_sample_size: int | None = None
+    support_sample_size: int | None = None
+
+class InvokeResponse(BaseModel):
+    tweets_dashboard: str
+    support_dashboard: str
 
 app = FastAPI(
     title="OmniSentimentAI API",
     version="0.1.0",
 )
 
-@app.get("/health", operation_id="health_check")
-async def health():
-    return {"status": "ok"}
+# Precompilamos el grafo una sola vez
+runner = graph
 
-@app.get("/run", operation_id="run_pipeline")
-async def run_pipeline():
-    # Aquí invocas el grafo usando la ruta real del CSV
-    return graph.invoke({"file_path": "training.1600000.processed.noemoticon.csv"})
-
-@app.get("/", operation_id="root_redirect")
-async def root():
-    # Si quieres que “/” haga lo mismo que “/run”, simplemente:
-    return run_pipeline()
-
-@app.post("/invoke", operation_id="invoke_pipeline")
+@app.post("/invoke", response_model=InvokeResponse)
 async def invoke_pipeline(req: InvokeRequest):
-    # Para depurar mejor, podemos quitar el try/except temporalmente
-    # y así verás el traceback completo en la consola y en la respuesta 500.
-    result = graph.invoke(req.dict())
-    return result
-
-
+    """
+    Invoca el pipeline y devuelve las rutas de los dashboards.
+    """
+    try:
+        result = runner.invoke({
+            "tweets_path":         req.tweets_path,
+            "support_path":        req.support_path,
+            **({"tweets_sample_size":  req.tweets_sample_size}  if req.tweets_sample_size  is not None else {}),
+            **({"support_sample_size": req.support_sample_size} if req.support_sample_size is not None else {}),
+        })
+        return InvokeResponse(
+            tweets_dashboard=result["tweets_dashboard"],
+            support_dashboard=result["support_dashboard"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

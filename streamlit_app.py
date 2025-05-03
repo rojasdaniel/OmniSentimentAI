@@ -29,35 +29,27 @@ def load_data(path: str) -> pd.DataFrame:
 
     return df.apply(clean_row, axis=1)
 
+# 3) Carga los dos CSV generados por tus pipelines
+df_tweets  = load_data("tweets_dashboard.csv")
+df_support = load_data("support_dashboard.csv")
 
-# 3) Carga el CSV generado por tu DashboardTool
-df = load_data("dashboard_data.csv")
-
-# 4) Título y sección de datos crudos
+# 4) Título y secciones por canal
 st.title("OmniSentimentAI Dashboard")
-st.subheader("Raw Data")
-st.dataframe(df, use_container_width=True)
 
-# 5) Distribuciones lado a lado
-sent_col, intent_col = st.columns(2)
+tweets_col, support_col = st.columns(2)
 
-with sent_col:
-    st.subheader("Sentiment Distribution")
-    sent_counts = df["sentiment"].value_counts()
-    st.bar_chart(sent_counts)
+with tweets_col:
+    st.header("Tweets Dashboard")
+    st.dataframe(df_tweets, use_container_width=True)
+    st.subheader("Sentiment Distribution (Tweets)")
+    st.bar_chart(df_tweets["sentiment"].value_counts())
+    st.subheader("Sample Tweet Records")
+    st.write(df_tweets.sample(5, random_state=42))
 
-with intent_col:
-    st.subheader("Intent Distribution")
-    int_counts = df["intent"].value_counts()
-    st.bar_chart(int_counts)
-
-# 6) Muestra algunas métricas o gráficos adicionales
-st.subheader("Score over Time (Sample)")
-if "timestamp" in df.columns:
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-    df_ts = df.set_index("timestamp").resample("H")["score"].mean().dropna()
-    st.line_chart(df_ts)
-
-# 7) Tabla de muestra
-st.subheader("Sample Records")
-st.write(df.sample(5, random_state=42))
+with support_col:
+    st.header("Support Dashboard")
+    st.dataframe(df_support, use_container_width=True)
+    st.subheader("Sentiment Distribution (Support)")
+    st.bar_chart(df_support["sentiment"].value_counts())
+    st.subheader("Sample Support Records")
+    st.write(df_support.sample(5, random_state=42))
