@@ -1,0 +1,19 @@
+name: agents
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - poetry
+  - pip
+  - pip:
+    - langchain-core>=0.3.58
+    - langchain-community
+    - langchain-openai
+    - openai
+    - python-dotenv
+    - nltk
+    - pandas
+    - streamlit
+    - langgraph==0.4.1
+    - langgraph-prebuilt==0.1.8
+prefix: /opt/miniconda3/envs/agents
