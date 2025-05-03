@@ -1,0 +1,18 @@
+id,canal,sentiment,score,intent
+1467810369,twitter,"Sentiment: Negative
+Score: 0.2",,complaint
+1467810672,twitter,"Sentiment: Negative
+Score: 0.2",,complaint
+1467810917,twitter,"Sentiment: Neutral
+Score: 0.5",,other
+1467811184,twitter,negative,0.2,complaint
+1467811193,twitter,negative,0.2,other
+1467811372,twitter,neutral,0.5,other
+1467811592,twitter,negative,0.2,suggestion
+1467811594,twitter,"Sentiment: Neutral
+Score: 0.5",,other
+1467811795,twitter,negative,0.0,other
+1467812025,twitter,"el amor
+
+Sentiment: Negative
+Score: 0.2",,complaint

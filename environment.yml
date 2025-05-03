@@ -4,8 +4,7 @@ channels:
 dependencies:
   - python=3.11
   - poetry
-  - pip
-  - pip:
+  - pip:          # <-- un solo bloque pip
     - langchain-core>=0.3.58
     - langchain-community
     - langchain-openai
@@ -16,4 +15,6 @@ dependencies:
     - streamlit
     - langgraph==0.4.1
     - langgraph-prebuilt==0.1.8
+    - "langgraph-cli[inmem]"
+    - "fastapi[standard]"
 prefix: /opt/miniconda3/envs/agents

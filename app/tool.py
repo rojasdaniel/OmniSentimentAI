@@ -1,31 +1,34 @@
 # app/tool.py
 
 import os
-from dotenv import load_dotenv
-load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise ValueError("Falta la variable OPENAI_API_KEY en el .env")
-
 import csv
 import json
 import pandas as pd
 import re
-from typing import List, Dict, Any
 
-from langchain.tools import BaseTool
+from dotenv import load_dotenv
+load_dotenv()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise ValueError("Falta la variable OPENAI_API_KEY en el .env")
+
+print("🔑 OPENAI_API_KEY is", "FOUND" if OPENAI_API_KEY else "MISSING")
+from typing import List, Dict, Any
+# IMPORTACIÓN UNIFICADA de BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
 from langchain_openai import OpenAI
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 
 # Instancia global del LLM
-llm: OpenAI = OpenAI(openai_api_key=OPENAI_API_KEY, temperature=0)
+llm = OpenAI(openai_api_key=OPENAI_API_KEY, temperature=0)
 
 
 class KaggleIngestionTool(BaseTool):
     name: str = "ingest_kaggle"
-    description: str = "Lee el CSV de Sentiment140 y devuelve registros."
+    description: str = "Lee el CSV de Sentiment140 y devuelve los primeros registros."
     sample_size: int = 1000
 
     def __init__(self, sample_size: int = 1000, **kwargs):
@@ -33,7 +36,7 @@ class KaggleIngestionTool(BaseTool):
         object.__setattr__(self, "sample_size", sample_size)
 
     def _run(self, file_path: str) -> List[Dict[str, Any]]:
-        registros: List[Dict[str, Any]] = []
+        registros = []
         with open(file_path, encoding="latin-1") as f:
             reader = csv.reader(f)
             for i, fila in enumerate(reader):
@@ -41,9 +44,9 @@ class KaggleIngestionTool(BaseTool):
                     break
                 _, tid, date, *_, text = fila
                 registros.append({
-                    "id":        tid,
-                    "canal":     "twitter",
-                    "texto":     text,
+                    "id": tid,
+                    "canal": "twitter",
+                    "texto": text,
                     "timestamp": date,
                 })
         return registros
@@ -74,9 +77,9 @@ class PreprocessingTool(BaseTool):
 
 class SentimentToolEn(BaseTool):
     name: str = "sentiment_tool_en"
-    description: str = "Clasifica sentimiento EN (positive|neutral|negative) → JSON."
+    description: str = "Clasifica sentimiento EN (positive, neutral, negative) → JSON."
     _prompt: PromptTemplate = PrivateAttr()
-    _chain:  LLMChain        = PrivateAttr()
+    _chain: LLMChain        = PrivateAttr()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -90,39 +93,40 @@ class SentimentToolEn(BaseTool):
         )
         self._chain = LLMChain(llm=llm, prompt=self._prompt)
 
-    def _run(self, text: str) -> Dict[str, Any]:
+    def _run(self, text: str):
         raw = self._chain.run(text=text)
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
             return {"sentiment": raw.strip(), "score": None}
 
-    async def _arun(self, text: str) -> Dict[str, Any]:
+    async def _arun(self, text: str):
         return self._run(text)
 
 
 class IntentToolEn(BaseTool):
     name: str = "intent_tool_en"
-    description: str = "Clasifica intención EN (question|complaint|suggestion|other)."
+    description: str = "Clasifica intención EN (question, complaint, suggestion, other)."
     _prompt: PromptTemplate = PrivateAttr()
-    _chain:  LLMChain        = PrivateAttr()
+    _chain: LLMChain        = PrivateAttr()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._prompt = PromptTemplate(
             input_variables=["text"],
             template=(
-                "Given the following text, respond with ONLY one word "
-                "(question, complaint, suggestion or other):\n\n{text}"
+                "Given the following text, respond with ONLY one word:\n"
+                "(question|complaint|suggestion|other)\n\n"
+                "{text}"
             ),
         )
         self._chain = LLMChain(llm=llm, prompt=self._prompt)
 
-    def _run(self, text: str) -> Dict[str, Any]:
+    def _run(self, text: str):
         intent = self._chain.run(text=text).strip().lower()
         return {"intent": intent}
 
-    async def _arun(self, text: str) -> Dict[str, Any]:
+    async def _arun(self, text: str):
         return self._run(text)
 
 
@@ -133,9 +137,9 @@ class AlertTool(BaseTool):
     def _run(self, info_json: str) -> str:
         data = json.loads(info_json)
         if data.get("sentiment") == "negative" and data.get("intent") == "complaint":
-            alerta = f"🚨 ALERTA crítica: id={data['id']} score={data['score']}"
-            print(alerta)
-            return alerta
+            msg = f"🚨 ALERTA crítica: id={data['id']} score={data['score']}"
+            print(msg)
+            return msg
         return "OK"
 
     async def _arun(self, info_json: str) -> str:

@@ -257,5 +257,3 @@ __pycache__/
 agents_env/
 *.pyc
 
-# Evitar subir el dataset pesado
-app/training.1600000.processed.noemoticon.csv
