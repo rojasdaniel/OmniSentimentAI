@@ -90,9 +90,11 @@ class TopicToolEn(BaseTool):
         self._prompt = PromptTemplate(
             input_variables=["text"],
             template=(
-                "Dado este ticket de soporte, responde con SOLO UNA PALABRA "
-                "(facturación, conectividad, cuenta u otro):\n\n"
-                "{text}"
+                "You are an expert customer support topic classifier. "
+                "Given the following customer support message, choose exactly one topic from "
+                "['facturación', 'conectividad', 'cuenta', 'otro'] and return it in JSON format as "
+                "{{\"topic\": \"chosen_topic\"}}.\n\n"
+                "Message:\n{text}"
             )
         )
         # creamos el RunnableSequence sin usar LLMChain
@@ -145,10 +147,14 @@ class SentimentToolEn(BaseTool):
         self._prompt = PromptTemplate(
             input_variables=["text"],
             template=(
-                "Classify the sentiment of the following text as JSON:\n"
-                "{{\"sentiment\": <positive|neutral|negative>, \"score\": <0-1>}}\n\n"
-                "Text: {text}"
-            ),
+                "You are a sentiment analysis assistant. Analyze the sentiment of the following text "
+                "and return a JSON object with two fields:\n"
+                "- sentiment: one of 'positive', 'neutral', or 'negative'\n"
+                "- score: a confidence score between 0.0 and 1.0\n\n"
+                "Example:\n"
+                "{{\"sentiment\": \"negative\", \"score\": 0.23}}\n\n"
+                "Text:\n{text}"
+            )
         )
         self._pipeline = self._prompt | llm
 
@@ -229,10 +235,11 @@ class IntentToolEn(BaseTool):
         self._prompt = PromptTemplate(
             input_variables=["text"],
             template=(
-                "Given the following text, respond with ONLY one word:\n"
-                "(question, complaint, suggestion or other)\n\n"
-                "{text}"
-            ),
+                "You are an intent classification assistant. For the following text, select exactly one intent "
+                "from ['question', 'complaint', 'request', 'feedback', 'other'] and return it in JSON format as "
+                "{{\"intent\": \"chosen_intent\"}}.\n\n"
+                "Text:\n{text}"
+            )
         )
         self._pipeline = self._prompt | llm
 
@@ -250,10 +257,15 @@ class IntentToolEn(BaseTool):
                                 return {"intent": record["intent"]}
                         except Exception:
                             continue
-        intent = self._pipeline.invoke({"text": text}).strip().lower()
-        result = {"intent": intent}
+        raw = self._pipeline.invoke({"text": text}).strip()
+        try:
+            parsed = json.loads(raw)
+            intent_value = parsed.get("intent", "").strip().lower()
+        except Exception:
+            intent_value = raw.lower()
+        result = {"intent": intent_value}
         if record_id:
-            to_store = {"id": record_id, "intent": intent}
+            to_store = {"id": record_id, "intent": intent_value}
             with open(self.CACHE_PATH, "a", encoding="utf-8") as f:
                 f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
         return result
@@ -341,7 +353,11 @@ class LanguageDetectionTool(BaseTool):
         super().__init__(**kwargs)
         self._prompt = PromptTemplate(
             input_variables=["text"],
-            template="Detect the language of the following text and respond with ONLY the ISO 639-1 code (e.g., 'en', 'es'):\n\n{text}"
+            template=(
+                "You are a language detection system. Identify the language of the following text and return a JSON object "
+                "with the ISO 639-1 code as {{{{\"language\": \"<code>\"}}}}.\n\n"
+                "Text:\n{text}"
+            )
         )
         self._pipeline = self._prompt | llm
 
@@ -368,8 +384,9 @@ class UrgencyAssessmentTool(BaseTool):
         self._prompt = PromptTemplate(
             input_variables=["text"],
             template=(
-                "Based on the following text, assess its urgency level. "
-                "Return only JSON: {{\"urgency\":\"alta|media|baja\"}}.\n\n{text}"
+                "You are an urgency assessment model. Determine the urgency level of the following message "
+                "as one of ['baja', 'media', 'alta', 'crítica'] and return JSON as {{\"urgency\": \"level\"}}.\n\n"
+                "Message:\n{text}"
             )
         )
         self._pipeline = self._prompt | llm
@@ -418,8 +435,10 @@ class EmotionAnalysisTool(BaseTool):
         self._prompt = PromptTemplate(
             input_variables=["text"],
             template=(
-                "Classify the primary emotion of this text. "
-                "Return only one of: anger, joy, sadness, surprise.\n\n{text}"
+                "You are an emotion detection assistant. Identify the primary emotion in the following message "
+                "from the set ['anger', 'joy', 'sadness', 'surprise', 'fear', 'disgust', 'neutral'] and return JSON "
+                "as {{\"emotion\": \"chosen_emotion\"}}.\n\n"
+                "Message:\n{text}"
             )
         )
         self._pipeline = self._prompt | llm
@@ -438,10 +457,15 @@ class EmotionAnalysisTool(BaseTool):
                                 return {"emotion": record["emotion"]}
                         except Exception:
                             continue
-        emotion = self._pipeline.invoke({"text": text}).strip().lower()
-        result = {"emotion": emotion}
+        raw = self._pipeline.invoke({"text": text}).strip()
+        try:
+            parsed = json.loads(raw)
+            emotion_value = parsed.get("emotion", "").strip().lower()
+        except Exception:
+            emotion_value = raw.lower()
+        result = {"emotion": emotion_value}
         if record_id:
-            to_store = {"id": record_id, "emotion": emotion}
+            to_store = {"id": record_id, "emotion": emotion_value}
             with open(self.CACHE_PATH, "a", encoding="utf-8") as f:
                 f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
         return result
@@ -464,9 +488,10 @@ class SupportAreaAssignmentTool(BaseTool):
         self._prompt = PromptTemplate(
             input_variables=["text"],
             template=(
-                "Clasifica el siguiente mensaje de soporte asignando el área responsable. "
-                "Responde SOLO una palabra entre: facturación, técnico, ventas, atención al cliente, otro.\n\n"
-                "{text}"
+                "You are a customer support routing assistant. Based on the following message, choose the correct support area "
+                "from ['facturación', 'técnico', 'ventas', 'atención al cliente', 'otro'] and return JSON "
+                "as {{\"support_area\": \"area\"}}.\n\n"
+                "Message:\n{text}"
             )
         )
         self._pipeline = self._prompt | llm
@@ -527,12 +552,16 @@ class ResponseSuggestionTool(BaseTool):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._prompt = PromptTemplate(
-            input_variables=["text"],
-            template="Generate a polite and concise response to the following message:\n\n{text}"
+            input_variables=["text", "user"],
+            template=(
+                "Generate a polite and concise response to the following message "
+                "from user {user}:\n\n"
+                "{text}"
+            )
         )
         self._pipeline = self._prompt | llm
 
-    def _run(self, text: str, record_id: str = None) -> Dict[str, Any]:
+    def _run(self, text: str, record_id: str = None, user: str = "") -> Dict[str, Any]:
         # Use text hash as record_id if none provided
         if record_id is None:
             record_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -546,7 +575,7 @@ class ResponseSuggestionTool(BaseTool):
                                 return {"response_draft": record["response_draft"]}
                         except Exception:
                             continue
-        draft = self._pipeline.invoke({"text": text}).strip()
+        draft = self._pipeline.invoke({"text": text, "user": user}).strip()
         result = {"response_draft": draft}
         if record_id:
             to_store = {"id": record_id, "response_draft": draft}
@@ -554,5 +583,5 @@ class ResponseSuggestionTool(BaseTool):
                 f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
         return result
 
-    async def _arun(self, text: str, record_id: str = None) -> Dict[str, Any]:
-        return self._run(text, record_id=record_id)
+    async def _arun(self, text: str, record_id: str = None, user: str = "") -> Dict[str, Any]:
+        return self._run(text, record_id=record_id, user=user)

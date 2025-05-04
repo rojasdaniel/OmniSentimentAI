@@ -107,11 +107,16 @@ def analyze_tweets(state: OmniState) -> Dict[str, Any]:
         e = EmotionAnalysisTool().run(d["texto"], record_id=d["id"])
         u = UrgencyAssessmentTool().run(d["texto"], record_id=d["id"])
         sa = SupportAreaAssignmentTool().run(d["texto"], record_id=d["id"])
-        sug = ResponseSuggestionTool().run(json.dumps(d, ensure_ascii=False), record_id=d["id"])
+        sug = ResponseSuggestionTool().run(
+            json.dumps(d, ensure_ascii=False),
+            record_id=d["id"],
+            user=d.get("user", "")
+        )
         # Assemble full record including all fields
         out.append({
             "id": d["id"],
             "canal": d.get("canal"),
+            "user": d.get("user"),
             "texto": d.get("texto"),
             "language": d.get("language"),
             "sentiment": s.get("sentiment"),
@@ -169,10 +174,12 @@ def analyze_support(state: OmniState) -> Dict[str, Any]:
         rec = {
             "id": d["id"],
             "canal": d["canal"],
+            "author_id": d.get("author_id"),
             "topic": d["topic"],
             "texto": d.get("texto"),
-            **s,
-            **i
+            "sentiment": s.get("sentiment"),
+            "score": s.get("score"),
+            "intent": i.get("intent"),
         }
         out.append(rec)
     print(f">> [analyze_support] created {len(out)} support records")
@@ -305,7 +312,11 @@ def enrich_tweets(state: OmniState) -> Dict[str, Any]:
             r2["support_area"] = support_area_result.get("support_area", "unknown")
         else:
             r2["support_area"] = "unknown"
-        r2["suggestion"] = ResponseSuggestionTool().run(json.dumps(r, ensure_ascii=False), record_id=r["id"])["response_draft"]
+        r2["suggestion"] = ResponseSuggestionTool().run(
+            json.dumps(r, ensure_ascii=False),
+            record_id=r["id"],
+            user=r.get("user", "")
+        )["response_draft"]
         enriched.append(r2)
         append_to_cache(cache_path, r2)
     print(f">> [enrich_tweets] enriched {len(enriched)} tweets")
@@ -327,7 +338,11 @@ def enrich_support(state: OmniState) -> Dict[str, Any]:
         r2["emotion"]    = EmotionAnalysisTool().run(text, record_id=r["id"])["emotion"]
         r2["urgency"]    = UrgencyAssessmentTool().run(text, record_id=r["id"])["urgency"]
         r2["support_area"] = SupportAreaAssignmentTool().run(text, record_id=r["id"]).get("support_area", "unknown")
-        r2["suggestion"] = ResponseSuggestionTool().run(json.dumps(r, ensure_ascii=False), record_id=r["id"])["response_draft"]
+        r2["suggestion"] = ResponseSuggestionTool().run(
+            json.dumps(r, ensure_ascii=False),
+            record_id=r["id"],
+            user=r.get("author_id", "")
+        )["response_draft"]
         enriched.append(r2)
         append_to_cache(cache_path, r2)
     print(f">> [enrich_support] enriched {len(enriched)} support records")

@@ -120,6 +120,10 @@ def load_data(path: str) -> pd.DataFrame:
 df_tweets  = load_data("tweets_dashboard.csv")
 df_support = load_data("support_dashboard.csv")
 
+# Truncate the 'id' column to the first 4 characters for display
+df_tweets["id"] = df_tweets["id"].astype(str).str[:4]
+df_support["id"] = df_support["id"].astype(str).str[:4]
+
 if st.button("🔄 Reload Data"):
     st.cache_data.clear()
     df_tweets  = load_data("tweets_dashboard.csv")
