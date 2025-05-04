@@ -574,6 +574,67 @@ class SarcasmDetectionTool(BaseTool):
     async def _arun(self, text: str) -> Dict[str, Any]:
         return self._run(text)
 
+
+# SummaryTool: generates a brief summary of input text
+class SummaryTool(BaseTool):
+    name: str = "summarize_text"
+    description: str = "Genera un resumen breve (una o dos frases) del texto dado."
+    _prompt: PromptTemplate = PrivateAttr()
+    _pipeline: Any         = PrivateAttr()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._prompt = PromptTemplate(
+            input_variables=["text"],
+            template=(
+                "You are an expert summarization assistant. "
+                "Provide a concise summary (1-2 sentences) of the following text:\n\n"
+                "{text}"
+            )
+        )
+        self._pipeline = self._prompt | llm
+
+    def _run(self, text: str) -> Dict[str, Any]:
+        summary = self._pipeline.invoke({"text": text}).strip()
+        return {"summary": summary}
+
+    async def _arun(self, text: str) -> Dict[str, Any]:
+        return self._run(text)
+
+
+# EntityRecognitionTool: extracts named entities from text
+class EntityRecognitionTool(BaseTool):
+    name: str = "extract_entities"
+    description: str = "Extrae entidades nombradas (productos, fechas, IDs) del texto y las devuelve."
+    _prompt: PromptTemplate = PrivateAttr()
+    _pipeline: Any         = PrivateAttr()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._prompt = PromptTemplate(
+            input_variables=["text"],
+            template=(
+                "You are an entity extraction assistant. "
+                "Identify and list all named entities (e.g., product names, dates, order IDs) in the following text. "
+                "Return JSON with a key 'entities' containing a list of strings.\n\n"
+                "Text:\n{text}"
+            )
+        )
+        self._pipeline = self._prompt | llm
+
+    def _run(self, text: str) -> Dict[str, Any]:
+        raw = self._pipeline.invoke({"text": text}).strip()
+        try:
+            parsed = json.loads(raw)
+            entities = parsed.get("entities", [])
+        except Exception:
+            # Fallback: split on commas if not JSON
+            entities = [e.strip() for e in raw.split(",") if e.strip()]
+        return {"entities": entities}
+
+    async def _arun(self, text: str) -> Dict[str, Any]:
+        return self._run(text)
+
 # 10) Response suggestion
 
 class ResponseSuggestionTool(BaseTool):

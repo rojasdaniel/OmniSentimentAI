@@ -205,6 +205,16 @@ with tab_tweets:
         top_users = df_tweets["user"].value_counts().head(10)
         st.bar_chart(top_users)
 
+    if "summary" in df_tweets.columns:
+        st.subheader("Tweet Summaries")
+        st.write(df_tweets["summary"].head(5))
+
+    if "entities" in df_tweets.columns:
+        st.subheader("Extracted Entities (Tweets)")
+        # Flatten entity lists and count frequencies
+        entities_list = df_tweets["entities"].dropna().explode()
+        st.bar_chart(entities_list.value_counts().head(10))
+
 with tab_support:
     st.header("Support Dashboard")
     st.dataframe(df_support, use_container_width=True)
@@ -240,6 +250,15 @@ with tab_support:
         st.subheader("Top Authors (Support)")
         top_authors = df_support["author_id"].value_counts().head(10)
         st.bar_chart(top_authors)
+
+    if "summary" in df_support.columns:
+        st.subheader("Support Ticket Summaries")
+        st.write(df_support["summary"].head(5))
+
+    if "entities" in df_support.columns:
+        st.subheader("Extracted Entities (Support)")
+        entities_list_s = df_support["entities"].dropna().explode()
+        st.bar_chart(entities_list_s.value_counts().head(10))
 
 
 

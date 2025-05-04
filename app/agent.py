@@ -29,7 +29,9 @@ from app.tool import (
     SupportAreaAssignmentTool,
     DuplicateDetectionTool,
     ResponseSuggestionTool,
-    SarcasmDetectionTool
+    SarcasmDetectionTool,
+    SummaryTool,
+    EntityRecognitionTool,
 )
 
 # Descargar stopwords una sola vez
@@ -126,6 +128,7 @@ def analyze_tweets(state: OmniState) -> Dict[str, Any]:
             "query": d.get("query"),
             "texto": d.get("texto"),
             "language": d.get("language"),
+            "sarcasm": d.get("sarcasm", False),
             "sentiment": s.get("sentiment"),
             "score": s.get("score"),
             "intent": i.get("intent"),
@@ -187,6 +190,7 @@ def analyze_support(state: OmniState) -> Dict[str, Any]:
             "response_tweet_id": d.get("response_tweet_id"),
             "in_response_to_tweet_id": d.get("in_response_to_tweet_id"),
             "language": d.get("language"),
+            "sarcasm": d.get("sarcasm", False),
             "topic": d["topic"],
             "texto": d.get("texto"),
             "sentiment": s.get("sentiment"),
@@ -320,6 +324,47 @@ def measure_response_time_support(state: OmniState) -> Dict[str, Any]:
     print(f">> [measure_response_time_support] computed response times for {len(recs)} records")
     return {"support_records": recs}
 
+# --- summarize/extract entities functions ---
+def summarize_tweets(state: OmniState) -> Dict[str, Any]:
+    """
+    Genera un resumen breve (1-2 frases) para cada tweet.
+    """
+    recs = state.get("tweets_records", [])
+    for r in recs:
+        r["summary"] = SummaryTool().run(r.get("texto", ""))["summary"]
+    print(f">> [summarize_tweets] summarized {len(recs)} tweets")
+    return {"tweets_records": recs}
+
+def extract_entities_tweets(state: OmniState) -> Dict[str, Any]:
+    """
+    Extrae entidades nombradas de cada tweet.
+    """
+    recs = state.get("tweets_records", [])
+    for r in recs:
+        r["entities"] = EntityRecognitionTool().run(r.get("texto", ""))["entities"]
+    print(f">> [extract_entities_tweets] extracted entities for {len(recs)} tweets")
+    return {"tweets_records": recs}
+
+def summarize_support(state: OmniState) -> Dict[str, Any]:
+    """
+    Genera un resumen breve (1-2 frases) para cada ticket de soporte.
+    """
+    recs = state.get("support_records", [])
+    for r in recs:
+        r["summary"] = SummaryTool().run(r.get("texto", ""))["summary"]
+    print(f">> [summarize_support] summarized {len(recs)} support records")
+    return {"support_records": recs}
+
+def extract_entities_support(state: OmniState) -> Dict[str, Any]:
+    """
+    Extrae entidades nombradas de cada ticket de soporte.
+    """
+    recs = state.get("support_records", [])
+    for r in recs:
+        r["entities"] = EntityRecognitionTool().run(r.get("texto", ""))["entities"]
+    print(f">> [extract_entities_support] extracted entities for {len(recs)} support records")
+    return {"support_records": recs}
+
 def load_cache(path):
     """
     Carga un JSONL cacheando por id, pero mergeando entradas
@@ -432,8 +477,14 @@ builder.add_node("sentiment_trend_tweets", sentiment_trend_tweets)
 builder.add_edge("enrich_tweets", "sentiment_trend_tweets")
 builder.add_edge("sentiment_trend_tweets", "alert_tweets")
 builder.add_node("alert_tweets",     alert_tweets)
+builder.add_node("summarize_tweets", summarize_tweets)
+builder.add_edge("alert_tweets", "summarize_tweets")
+builder.add_node("extract_entities_tweets", extract_entities_tweets)
+builder.add_edge("summarize_tweets", "extract_entities_tweets")
+builder.add_edge("extract_entities_tweets", "dashboard_tweets")
 builder.add_node("dashboard_tweets", dashboard_tweets)
 
+#
 # Support pipeline
 builder.add_node("ingest_support",    ingest_support)
 builder.add_node("detect_language_support", detect_language_support)
@@ -450,6 +501,11 @@ builder.add_node("measure_response_time_support", measure_response_time_support)
 builder.add_edge("enrich_support", "measure_response_time_support")
 builder.add_edge("measure_response_time_support", "alert_support")
 builder.add_node("alert_support",     alert_support)
+builder.add_node("summarize_support", summarize_support)
+builder.add_edge("alert_support", "summarize_support")
+builder.add_node("extract_entities_support", extract_entities_support)
+builder.add_edge("summarize_support", "extract_entities_support")
+builder.add_edge("extract_entities_support", "dashboard_support")
 builder.add_node("dashboard_support", dashboard_support)
 # Graph construction section
 builder.add_node("chat", chat_node)
