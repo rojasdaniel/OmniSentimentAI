@@ -1,0 +1,50 @@
+{"sentiment": "negative", "score": 0.2, "id": "6b51e3a471a3510e2901679e9cc6289f9d6000b8a94248d628286e76593e3fd0"}
+{"id": "6b51e3a471a3510e2901679e9cc6289f9d6000b8a94248d628286e76593e3fd0", "intent": "complaint"}
+{"sentiment": "negative", "score": 0.2, "id": "c2d7901bb6decaea931efe9291bd2f89c71b8210868b879321ea8185897e7813"}
+{"id": "c2d7901bb6decaea931efe9291bd2f89c71b8210868b879321ea8185897e7813", "intent": "complaint"}
+{"sentiment": "neutral", "score": 0.5, "id": "548ab265b517a948d54eae3bbc2b2d4db9be34a3b71fdf1b1750e6a4b91bf5a5"}
+{"id": "548ab265b517a948d54eae3bbc2b2d4db9be34a3b71fdf1b1750e6a4b91bf5a5", "intent": "other"}
+{"sentiment": "negative", "score": 0.2, "id": "d60b8178fe89e3e6f5d54a34e705fcd6ec573f49cfb872bc1170275635217e02"}
+{"id": "d60b8178fe89e3e6f5d54a34e705fcd6ec573f49cfb872bc1170275635217e02", "intent": "complaint"}
+{"sentiment": "negative", "score": 0.2, "id": "9db29002cb8a93c3eaac683f7c00936a260a2d865ce8bf1c258c904d93217f41"}
+{"id": "9db29002cb8a93c3eaac683f7c00936a260a2d865ce8bf1c258c904d93217f41", "intent": "complaint"}
+{"sentiment": "neutral", "score": 0.5, "id": "7790fc0bafa5acc8b83fa8b2c2dd0f045eb58689f23fc5d60ec2203b823a685b"}
+{"id": "7790fc0bafa5acc8b83fa8b2c2dd0f045eb58689f23fc5d60ec2203b823a685b", "intent": "other"}
+{"sentiment": "negative", "score": 0.2, "id": "572e568365e837c99bccdfdf09c67c7f6f75614012746c6d4da1b1aaba574220"}
+{"id": "572e568365e837c99bccdfdf09c67c7f6f75614012746c6d4da1b1aaba574220", "intent": "suggestion"}
+{"sentiment": "neutral", "score": 0.5, "id": "9c241be0317a99112f235e81fa69442d305037c95bf8b48337df5c3beaba49c9"}
+{"id": "9c241be0317a99112f235e81fa69442d305037c95bf8b48337df5c3beaba49c9", "intent": "other"}
+{"sentiment": "negative", "score": 0, "id": "fc2c91d333107240282a3bcf6ec88c596fffe6095cacccc28fe1a3c6dfad05b4"}
+{"id": "fc2c91d333107240282a3bcf6ec88c596fffe6095cacccc28fe1a3c6dfad05b4", "intent": "complaint"}
+{"sentiment": "negative", "score": 0.2, "id": "126c3334161d047896d26b5bdc24f93603583918c9a4666b8753305312679e2f"}
+{"id": "126c3334161d047896d26b5bdc24f93603583918c9a4666b8753305312679e2f", "intent": "complaint"}
+{"sentiment": "neutral", "score": 0.5, "id": "4615f016243b0a98b4ee35772a6caf030ab38f078409bb908b2a0e4fe95f009c"}
+{"id": "4615f016243b0a98b4ee35772a6caf030ab38f078409bb908b2a0e4fe95f009c", "intent": "suggestion"}
+{"sentiment": "neutral", "score": 0.5, "id": "183695cfc8bd10222bed64c67f99062300c42870c5fa2146bbd0185ee526715c"}
+{"id": "183695cfc8bd10222bed64c67f99062300c42870c5fa2146bbd0185ee526715c", "intent": "suggestion"}
+{"sentiment": "neutral", "score": 0.5, "id": "8f8dd251f3109e766a88255dfd49367b0f4a5199ab4be200688c952972598c17"}
+{"id": "8f8dd251f3109e766a88255dfd49367b0f4a5199ab4be200688c952972598c17", "intent": "complaint"}
+{"sentiment": "neutral", "score": 0.5, "id": "21522893aff6104b1d0a4f0ba2584d353571481529baac28376a036bb83c089d"}
+{"id": "21522893aff6104b1d0a4f0ba2584d353571481529baac28376a036bb83c089d", "intent": "suggestion"}
+{"sentiment": "neutral", "score": 0.5, "id": "f64fb2429ad2b7f73df17a7e1366e564bc71f4dd7e9b3b71e1dbe4cc61338527"}
+{"id": "f64fb2429ad2b7f73df17a7e1366e564bc71f4dd7e9b3b71e1dbe4cc61338527", "intent": "other"}
+{"sentiment": "neutral", "score": 0.5, "id": "53b552bb4b1592235bac85924329ddbf068bd8b3755327512b8bff7e72a576f4"}
+{"id": "53b552bb4b1592235bac85924329ddbf068bd8b3755327512b8bff7e72a576f4", "intent": "suggestion"}
+{"sentiment": "negative", "score": 0, "id": "c8767bb9e93f9e4c15274c022251d7810722017c7782bd6059c431ee33ef3014"}
+{"id": "c8767bb9e93f9e4c15274c022251d7810722017c7782bd6059c431ee33ef3014", "intent": "complaint"}
+{"sentiment": "negative", "score": 0.2, "id": "3329a766859623b197fb899a0f28335bb0e640a204944ab49bbf805d32be04ef"}
+{"id": "3329a766859623b197fb899a0f28335bb0e640a204944ab49bbf805d32be04ef", "intent": "complaint"}
+{"sentiment": "negative", "score": 0.2, "id": "ee26501a8df14c673bbbff6bd907891beff89947efca75a7139d436a7b70c740"}
+{"id": "ee26501a8df14c673bbbff6bd907891beff89947efca75a7139d436a7b70c740", "intent": "complaint"}
+{"sentiment": "neutral", "score": 0.5, "id": "6f03a1940df2553a6d7df42248ee4aa3c077d6b0ffec63a427bc0ca2754d5761"}
+{"id": "6f03a1940df2553a6d7df42248ee4aa3c077d6b0ffec63a427bc0ca2754d5761", "intent": "suggestion"}
+{"id": "1467810369", "canal": "twitter", "texto": "switchfoot awww bummer shoulda got david carr third day", "language": "en", "sentiment": "negative", "score": 0.2, "intent": "complaint", "emotion": "joy", "urgency": "baja", "support_area": "ventas", "suggestion": "Hello, thank you for your message. I appreciate your suggestion, but I am happy with my decision to choose Switchfoot. Have a great day!"}
+{"id": "1467810672", "canal": "twitter", "texto": "upset update facebook texting might cry result school today also blah", "language": "en", "sentiment": "negative", "score": 0.2, "intent": "complaint", "emotion": "sadness", "urgency": "baja", "support_area": "atención al cliente", "suggestion": "Hello, thank you for reaching out. I'm sorry to hear that you had a tough day at school. Is there anything I can do to help? Take care."}
+{"id": "1467810917", "canal": "twitter", "texto": "kenichan dived many times ball managed save 50 rest go bounds", "language": "en", "sentiment": "neutral", "score": 0.5, "intent": "other", "emotion": "surprise", "urgency": "baja", "support_area": "técnico", "suggestion": "Hello [Name],\n\nThank you for contacting us. We appreciate your interest in our services and apologize for any inconvenience caused by the previous tweet. We are constantly working towards improving our services to provide the best experience for our customers. Your understanding is greatly appreciated.\n\nBest regards,\n[Your Name]"}
+{"id": "1467811184", "canal": "twitter", "texto": "whole body feels itchy like fire", "language": "en", "sentiment": "negative", "score": 0.2, "intent": "complaint", "emotion": "surprise", "urgency": "baja", "support_area": "atención al cliente", "suggestion": "Hello ElleCTF,\n\nThank you for contacting us. We apologize for any discomfort you are experiencing. If the itching persists, we suggest seeking medical advice. We hope you feel better soon.\n\nBest, [Your Name]"}
+{"id": "1467811193", "canal": "twitter", "texto": "nationwideclass behaving mad see", "language": "en", "sentiment": "negative", "score": 0.2, "intent": "complaint", "emotion": "anger", "urgency": "baja", "support_area": "otro", "suggestion": "Hello [Sender's Name],\n\nThank you for reaching out to us. We are sorry to hear about your negative experience. We take all complaints seriously and will investigate this matter further. We appreciate your feedback and will work to address any issues. Have a great day.\n\nBest, [Your Name]"}
+{"id": "1467811372", "canal": "twitter", "texto": "kwesidei whole crew", "language": "en", "sentiment": "neutral", "score": 0.5, "intent": "other", "emotion": "joy", "urgency": "baja", "support_area": "otro", "suggestion": "Hello Joy_wolf,\n\nThank you for your message. I appreciate your interest in our crew. Have a great day!\n\nBest, \n[Your Name]"}
+{"id": "1467811592", "canal": "twitter", "texto": "need hug", "language": "en", "sentiment": "negative", "score": 0.2, "intent": "suggestion", "emotion": "joy", "urgency": "baja", "support_area": "atención al cliente", "suggestion": "Hello [Sender],\n\nThank you for reaching out. I'm sorry to hear that you're in need of a hug. Is there anything I can do to help? Please let me know. Take care.\n\nBest, [Your Name]"}
+{"id": "1467811594", "canal": "twitter", "texto": "loltrish hey long time see yes rains bit bit lol fine thanks", "language": "en", "sentiment": "neutral", "score": 0.5, "intent": "other", "emotion": "surprise", "urgency": "baja", "support_area": "otro", "suggestion": "\"Hello there! Thank you for reaching out. It's been a while since we've talked. Yes, it has been raining a bit lately. I hope everything is going well for you. Take care!\""}
+{"id": "1467811795", "canal": "twitter", "texto": "tatiana_k nope", "language": "en", "sentiment": "negative", "score": 0, "intent": "complaint", "emotion": "surprise", "urgency": "baja", "support_area": "otro", "suggestion": "Hello tatiana_k, thank you for your message. I apologize for any confusion or inconvenience caused by my previous response. Is there something specific you would like to discuss? I am here to assist in any way I can. Have a great day."}
+{"id": "1467812025", "canal": "twitter", "texto": "twittera que muera", "language": "es", "sentiment": "negative", "score": 0.2, "intent": "complaint", "emotion": "anger", "urgency": "alta", "support_area": "otro", "suggestion": "Dear mimismo,\n\nThank you for reaching out to us. We value your feedback and appreciate you taking the time to share your thoughts with us. However, we kindly request that you refrain from using language that promotes harm towards others. Let's spread positivity and kindness on social media. Have a great day.\n\nSincerely, [Your Name]"}

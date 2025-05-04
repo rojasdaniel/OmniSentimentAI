@@ -1,6 +1,7 @@
 # app/tool.py
 
 import warnings
+import hashlib
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Ignorar todas las LangChainDeprecationWarning y mensajes “deprecated”
@@ -129,11 +130,15 @@ class PreprocessingTool(BaseTool):
 
 
 
+
+from typing import ClassVar
+
 class SentimentToolEn(BaseTool):
     name: str = "sentiment_tool_en"
     description: str = "Clasifica el sentimiento de un texto en inglés y devuelve JSON."
     _prompt:    PromptTemplate = PrivateAttr()
     _pipeline:  Any            = PrivateAttr()  # RunnableSequence debajo
+    CACHE_PATH: ClassVar[str] = "cache/processed_tweets.jsonl"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -145,27 +150,71 @@ class SentimentToolEn(BaseTool):
                 "Text: {text}"
             ),
         )
-        # Componemos PromptTemplate | llm en un RunnableSequence
         self._pipeline = self._prompt | llm
 
-    def _run(self, text: str) -> Dict[str, Any]:
+    def _run(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        # Use text hash as record_id if none provided
+        if record_id is None:
+            record_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        # Check cache if record_id provided
+        if record_id:
+            if os.path.exists(self.CACHE_PATH):
+                with open(self.CACHE_PATH, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            record = json.loads(line)
+                            if record.get("id") == record_id and "sentiment" in record:
+                                # Clean sentiment from cache as well
+                                sentiment_clean = (
+                                    record["sentiment"].strip().lower().replace("sentiment:", "").strip()
+                                    if isinstance(record["sentiment"], str) else record["sentiment"]
+                                )
+                                return {"sentiment": sentiment_clean, "score": record.get("score")}
+                        except Exception:
+                            continue
         raw = self._pipeline.invoke({"text": text})
         try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            # Try to extract "Sentiment: X Score: Y"
-            m = re.search(r"Sentiment[:]?\s*([A-Za-z]+).*?Score[:]?\s*([0-9]*\.?[0-9]+)", raw, re.IGNORECASE)
-            if m:
-                sentiment = m.group(1).lower()
-                score = float(m.group(2))
+            result = json.loads(raw)
+            # Clean sentiment value if present
+            if "sentiment" in result and isinstance(result["sentiment"], str):
+                result["sentiment"] = result["sentiment"].strip().lower().replace("sentiment:", "").strip()
+                # Remove extra newlines or words
+                result["sentiment"] = result["sentiment"].split("\n")[0].strip()
+        except Exception:
+            sentiment, score = None, None
+            for line in raw.strip().splitlines():
+                lower = line.lower()
+                if lower.startswith("sentiment"):
+                    parts = line.split(":", 1)
+                    # Remove prefix and clean
+                    sentiment = (
+                        parts[1].strip().lower().replace("sentiment:", "").strip()
+                        if len(parts) > 1 else None
+                    )
+                    if sentiment:
+                        sentiment = sentiment.split("\n")[0].strip()
+                if lower.startswith("score"):
+                    parts = line.split(":", 1)
+                    try:
+                        score = float(parts[1].strip())
+                    except Exception:
+                        score = None
+            if sentiment is not None:
+                result = {"sentiment": sentiment, "score": score}
             else:
-                # fallback single label
-                sentiment = raw.strip().lower()
-                score = None
-            return {"sentiment": sentiment, "score": score}
+                # Clean the entire raw as fallback, remove prefix and newlines
+                sentiment = raw.strip().lower().replace("sentiment:", "").strip()
+                sentiment = sentiment.split("\n")[0].strip()
+                result = {"sentiment": sentiment, "score": None}
+        if record_id:
+            result["id"] = record_id
+            with open(self.CACHE_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(result, ensure_ascii=False) + "\n")
+        return result
 
-    async def _arun(self, text: str) -> Dict[str, Any]:
-        return self._run(text)
+    async def _arun(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        return self._run(text, record_id=record_id)
+
 
 
 class IntentToolEn(BaseTool):
@@ -173,6 +222,7 @@ class IntentToolEn(BaseTool):
     description: str = "Clasifica la intención de un texto en inglés."
     _prompt:    PromptTemplate = PrivateAttr()
     _pipeline:  Any            = PrivateAttr()
+    CACHE_PATH: ClassVar[str] = "cache/processed_tweets.jsonl"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -186,12 +236,30 @@ class IntentToolEn(BaseTool):
         )
         self._pipeline = self._prompt | llm
 
-    def _run(self, text: str) -> Dict[str, Any]:
+    def _run(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        # Use text hash as record_id if none provided
+        if record_id is None:
+            record_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if record_id:
+            if os.path.exists(self.CACHE_PATH):
+                with open(self.CACHE_PATH, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            record = json.loads(line)
+                            if record.get("id") == record_id and "intent" in record:
+                                return {"intent": record["intent"]}
+                        except Exception:
+                            continue
         intent = self._pipeline.invoke({"text": text}).strip().lower()
-        return {"intent": intent}
+        result = {"intent": intent}
+        if record_id:
+            to_store = {"id": record_id, "intent": intent}
+            with open(self.CACHE_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
+        return result
 
-    async def _arun(self, text: str) -> Dict[str, Any]:
-        return self._run(text)
+    async def _arun(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        return self._run(text, record_id=record_id)
 
 
 class AlertTool(BaseTool):
@@ -287,11 +355,13 @@ class LanguageDetectionTool(BaseTool):
         return self._run(text)
 
 # 2) Urgency assessment
+
 class UrgencyAssessmentTool(BaseTool):
     name: str = "assess_urgency"
     description: str = "Evalúa la urgencia de un texto. Devuelve JSON {'urgency':'alta|media|baja'}."
     _prompt: PromptTemplate = PrivateAttr()
     _pipeline: Any        = PrivateAttr()
+    CACHE_PATH: ClassVar[str] = "cache/processed_support.jsonl"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -304,24 +374,44 @@ class UrgencyAssessmentTool(BaseTool):
         )
         self._pipeline = self._prompt | llm
 
-    def _run(self, text: str) -> Dict[str, Any]:
+    def _run(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        # Use text hash as record_id if none provided
+        if record_id is None:
+            record_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if record_id:
+            if os.path.exists(self.CACHE_PATH):
+                with open(self.CACHE_PATH, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            record = json.loads(line)
+                            if record.get("id") == record_id and "urgency" in record:
+                                return {"urgency": record["urgency"]}
+                        except Exception:
+                            continue
         raw = self._pipeline.invoke({"text": text})
         try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            # Fallback when model returns only the label
-            urgency = raw.strip().strip('"')
-            return {"urgency": urgency}
+            result = json.loads(raw)
+        except Exception:
+            m = re.search(r"(alta|media|baja)", raw.lower())
+            urgency = m.group(1) if m else raw.strip().lower()
+            result = {"urgency": urgency}
+        if record_id:
+            to_store = {"id": record_id, "urgency": result["urgency"]}
+            with open(self.CACHE_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
+        return result
 
-    async def _arun(self, text: str) -> Dict[str, Any]:
-        return self._run(text)
+    async def _arun(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        return self._run(text, record_id=record_id)
 
 # 3) Emotion analysis
+
 class EmotionAnalysisTool(BaseTool):
     name: str = "emotion_analysis"
     description: str = "Clasifica la emoción principal: anger, joy, sadness o surprise."
     _prompt: PromptTemplate = PrivateAttr()
     _pipeline: Any        = PrivateAttr()
+    CACHE_PATH: ClassVar[str] = "cache/processed_support.jsonl"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -334,50 +424,79 @@ class EmotionAnalysisTool(BaseTool):
         )
         self._pipeline = self._prompt | llm
 
-    def _run(self, text: str) -> Dict[str, Any]:
+    def _run(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        # Use text hash as record_id if none provided
+        if record_id is None:
+            record_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if record_id:
+            if os.path.exists(self.CACHE_PATH):
+                with open(self.CACHE_PATH, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            record = json.loads(line)
+                            if record.get("id") == record_id and "emotion" in record:
+                                return {"emotion": record["emotion"]}
+                        except Exception:
+                            continue
         emotion = self._pipeline.invoke({"text": text}).strip().lower()
-        return {"emotion": emotion}
+        result = {"emotion": emotion}
+        if record_id:
+            to_store = {"id": record_id, "emotion": emotion}
+            with open(self.CACHE_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
+        return result
 
-    async def _arun(self, text: str) -> Dict[str, Any]:
-        return self._run(text)
+    async def _arun(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        return self._run(text, record_id=record_id)
 
-# 5) Keyword extraction
-class KeywordExtractorTool(BaseTool):
-    name: str = "extract_keywords"
-    description: str = "Extrae las palabras clave más importantes de un texto."
+
+# 5) Support area assignment (reemplaza extracción de keywords)
+
+class SupportAreaAssignmentTool(BaseTool):
+    name: str = "assign_support_area"
+    description: str = "Asigna el área de soporte responsable del texto: facturación, técnico, ventas, atención al cliente, otro."
     _prompt: PromptTemplate = PrivateAttr()
-    _pipeline: Any        = PrivateAttr()
+    _pipeline: Any = PrivateAttr()
+    CACHE_PATH: ClassVar[str] = "cache/processed_support.jsonl"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._prompt = PromptTemplate(
             input_variables=["text"],
             template=(
-                "Given the following text, extract the most relevant key phrases or keywords "
-                "that summarize its main content. "
-                "Return ONLY a JSON array of strings (e.g., [\"phrase1\", \"phrase2\"]).\n\n"
-                "Text:\n\n"
+                "Clasifica el siguiente mensaje de soporte asignando el área responsable. "
+                "Responde SOLO una palabra entre: facturación, técnico, ventas, atención al cliente, otro.\n\n"
                 "{text}"
             )
         )
-        # Model should not echo instructions, only output JSON list
         self._pipeline = self._prompt | llm
 
-    def _run(self, text: str) -> Dict[str, Any]:
-        raw = self._pipeline.invoke({"text": text})
-        try:
-            kws = json.loads(raw)
-        except json.JSONDecodeError:
-            # Try fixing single quotes
-            try:
-                kws = json.loads(raw.replace("'", '"'))
-            except Exception:
-                # As last resort, split on commas/brackets
-                kws = [w.strip() for w in re.split(r"[,\[\]]+", raw) if w.strip()]
-        return {"keywords": kws}
+    def _run(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        # Use text hash as record_id if none provided
+        if record_id is None:
+            record_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if record_id:
+            if os.path.exists(self.CACHE_PATH):
+                with open(self.CACHE_PATH, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            record = json.loads(line)
+                            if record.get("id") == record_id and "support_area" in record:
+                                return {"support_area": record["support_area"]}
+                        except Exception:
+                            continue
+        area = self._pipeline.invoke({"text": text}).strip().lower()
+        valid = {"facturación", "técnico", "ventas", "atención al cliente", "otro"}
+        area_final = area if area in valid else "otro"
+        result = {"support_area": area_final}
+        if record_id:
+            to_store = {"id": record_id, "support_area": area_final}
+            with open(self.CACHE_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
+        return result
 
-    async def _arun(self, text: str) -> Dict[str, Any]:
-        return self._run(text)
+    async def _arun(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        return self._run(text, record_id=record_id)
 
 # 7) Duplicate detection
 class DuplicateDetectionTool(BaseTool):
@@ -397,11 +516,13 @@ class DuplicateDetectionTool(BaseTool):
         return self._run(args)
 
 # 10) Response suggestion
+
 class ResponseSuggestionTool(BaseTool):
     name: str = "suggest_response"
     description: str = "Genera un borrador de respuesta para un registro dado."
     _prompt: PromptTemplate = PrivateAttr()
     _pipeline: Any        = PrivateAttr()
+    CACHE_PATH: ClassVar[str] = "cache/processed_support.jsonl"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -411,9 +532,27 @@ class ResponseSuggestionTool(BaseTool):
         )
         self._pipeline = self._prompt | llm
 
-    def _run(self, text: str) -> Dict[str, Any]:
+    def _run(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        # Use text hash as record_id if none provided
+        if record_id is None:
+            record_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if record_id:
+            if os.path.exists(self.CACHE_PATH):
+                with open(self.CACHE_PATH, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            record = json.loads(line)
+                            if record.get("id") == record_id and "response_draft" in record:
+                                return {"response_draft": record["response_draft"]}
+                        except Exception:
+                            continue
         draft = self._pipeline.invoke({"text": text}).strip()
-        return {"response_draft": draft}
+        result = {"response_draft": draft}
+        if record_id:
+            to_store = {"id": record_id, "response_draft": draft}
+            with open(self.CACHE_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
+        return result
 
-    async def _arun(self, text: str) -> Dict[str, Any]:
-        return self._run(text)
+    async def _arun(self, text: str, record_id: str = None) -> Dict[str, Any]:
+        return self._run(text, record_id=record_id)

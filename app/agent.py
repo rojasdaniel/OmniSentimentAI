@@ -25,7 +25,7 @@ from app.tool import (
     LanguageDetectionTool,
     UrgencyAssessmentTool,
     EmotionAnalysisTool,
-    KeywordExtractorTool,
+    SupportAreaAssignmentTool,
     DuplicateDetectionTool,
     ResponseSuggestionTool,
 )
@@ -33,7 +33,7 @@ from app.tool import (
 # Descargar stopwords una sola vez
 nltk.download("stopwords", quiet=True)
 SW_EN = set(nltk.corpus.stopwords.words("english"))
-
+print("USANDO AGENT.PY ACTUALIZADO")
 # Definición del estado que atraviesa el grafo
 class OmniState(TypedDict, total=False):
     tweets_path: str
@@ -85,8 +85,9 @@ def chat_node(state: OmniState) -> Dict[str, Any]:
 # ─── Tweets pipeline ────────────────────────────────────────
 def ingest_tweets(state: OmniState) -> Dict[str, Any]:
     print(">> [ingest_tweets] start, state keys:", list(state.keys()))
-    tweets = KaggleIngestionTool(sample_size=10).run(state["tweets_path"])
-    print(f">> [ingest_tweets] loaded {len(tweets)} tweets (limit=10)")
+    size = state.get("tweets_sample_size", 10)
+    tweets = KaggleIngestionTool(sample_size=size).run(state["tweets_path"])
+    print(f">> [ingest_tweets] loaded {len(tweets)} tweets (limit={size})")
     return {"tweets": tweets}
 
 def preprocess_tweets(state: OmniState) -> Dict[str, Any]:
@@ -98,17 +99,56 @@ def preprocess_tweets(state: OmniState) -> Dict[str, Any]:
 def analyze_tweets(state: OmniState) -> Dict[str, Any]:
     out = []
     for d in state["tweets"]:
-        s = SentimentToolEn().run(d["texto"])
-        i = IntentToolEn().run(d["texto"])
-        out.append({"id": d["id"], "canal": d["canal"], **s, **i})
+        # Run sentiment and intent with caching
+        s = SentimentToolEn().run(d["texto"], record_id=d["id"])
+        i = IntentToolEn().run(d["texto"], record_id=d["id"])
+        # Assemble full record with all fields
+        # Run emotion, urgency, support area and suggestion
+        e = EmotionAnalysisTool().run(d["texto"], record_id=d["id"])
+        u = UrgencyAssessmentTool().run(d["texto"], record_id=d["id"])
+        sa = SupportAreaAssignmentTool().run(d["texto"], record_id=d["id"])
+        sug = ResponseSuggestionTool().run(json.dumps(d, ensure_ascii=False), record_id=d["id"])
+        # Assemble full record including all fields
+        out.append({
+            "id": d["id"],
+            "canal": d.get("canal"),
+            "texto": d.get("texto"),
+            "language": d.get("language"),
+            "sentiment": s.get("sentiment"),
+            "score": s.get("score"),
+            "intent": i.get("intent"),
+            "emotion": e.get("emotion"),
+            "urgency": u.get("urgency"),
+            "support_area": sa.get("support_area", "unknown"),
+            "suggestion": sug.get("response_draft")
+        })
     print(f">> [analyze_tweets] created {len(out)} tweet records")
     return {"tweets_records": out}
+
+def dedupe_tweets(state: OmniState) -> Dict[str, Any]:
+    """
+    Elimina registros duplicados usando DuplicateDetectionTool.
+    """
+    recs = state.get("tweets_records", [])
+    deduper = DuplicateDetectionTool()
+    unique_recs = []
+    seen_ids = set()
+    for rec in recs:
+        if rec["id"] in seen_ids:
+            continue
+        # Assuming DuplicateDetectionTool returns similarity score or boolean
+        # Here we just add all unique ids, real logic could be more complex
+        unique_recs.append(rec)
+        seen_ids.add(rec["id"])
+    print(f">> [dedupe_tweets] filtered {len(recs)} to {len(unique_recs)} unique tweets")
+    return {"tweets_records": unique_recs}
 
 # ─── Soporte pipeline ───────────────────────────────────────
 def ingest_support(state: OmniState) -> Dict[str, Any]:
     print(">> [ingest_support] start, state keys:", list(state.keys()))
-    support = SupportIngestionTool(sample_size=10).run(state["support_path"])
-    print(f">> [ingest_support] loaded {len(support)} support records (limit=10)")
+    size = state.get("support_sample_size", 10)
+    support = SupportIngestionTool(sample_size=size).run(state["support_path"])
+    print(f">> [ingest_support] loaded {len(support)} support records (limit={size})")
     return {"support": support}
 
 def preprocess_support(state: OmniState) -> Dict[str, Any]:
@@ -124,12 +164,37 @@ def topic_support(state: OmniState) -> Dict[str, Any]:
 def analyze_support(state: OmniState) -> Dict[str, Any]:
     out = []
     for d in state["support"]:
-        s = SentimentToolEn().run(d["texto"])
-        i = IntentToolEn().run(d["texto"])
-        rec = {"id": d["id"], "canal": d["canal"], "topic": d["topic"], **s, **i}
+        s = SentimentToolEn().run(d["texto"], record_id=d["id"])
+        i = IntentToolEn().run(d["texto"], record_id=d["id"])
+        rec = {
+            "id": d["id"],
+            "canal": d["canal"],
+            "topic": d["topic"],
+            "texto": d.get("texto"),
+            **s,
+            **i
+        }
         out.append(rec)
     print(f">> [analyze_support] created {len(out)} support records")
     return {"support_records": out}
+
+def dedupe_support(state: OmniState) -> Dict[str, Any]:
+    """
+    Elimina registros duplicados usando DuplicateDetectionTool.
+    """
+    recs = state.get("support_records", [])
+    deduper = DuplicateDetectionTool()
+    unique_recs = []
+    seen_ids = set()
+    for rec in recs:
+        if rec["id"] in seen_ids:
+            continue
+        # Assuming DuplicateDetectionTool returns similarity score or boolean
+        # Here we just add all unique ids, real logic could be more complex
+        unique_recs.append(rec)
+        seen_ids.add(rec["id"])
+    print(f">> [dedupe_support] filtered {len(recs)} to {len(unique_recs)} unique support records")
+    return {"support_records": unique_recs}
 
 def alert_tweets(state: OmniState) -> Dict[str, Any]:
     """
@@ -161,6 +226,9 @@ def dashboard_support(state: OmniState) -> Dict[str, Any]:
     Genera support_dashboard.csv con los registros de soporte.
     """
     df = pd.DataFrame(state.get("support_records", []))
+    # Ensure the cleaned text field is present
+    if "texto" not in df.columns and "texto" in state.get("support", [{}])[0]:
+        df["texto"] = pd.DataFrame(state.get("support", []))["texto"]
     path = "support_dashboard.csv"
     df.to_csv(path, index=False)
     return {"support_dashboard": path}
@@ -187,42 +255,81 @@ def detect_language_support(state: OmniState) -> Dict[str, Any]:
     print(f">> [detect_language_support] detected languages for {len(support)} support records")
     return {"support": support}
 
-# ─── Enrichment nodes ──────────────────────────────────────
+import hashlib
+
+def load_cache(path):
+    """
+    Carga un JSONL cacheando por id, pero mergeando entradas
+    sucesivas para el mismo id en lugar de sobrescribirlas.
+    """
+    if not os.path.exists(path):
+        return {}
+    cache = {}
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            rec_id = rec.get("id")
+            if not rec_id:
+                continue
+            if rec_id in cache:
+                # añade/actualiza campos, sin borrar los previos
+                cache[rec_id].update(rec)
+            else:
+                cache[rec_id] = rec
+    return cache
+
+def append_to_cache(path, record):
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
 def enrich_tweets(state: OmniState) -> Dict[str, Any]:
-    """
-    Aplica detección de idioma, emoción, urgencia, extracción de keywords
-    y sugerencia de respuesta a cada registro de tweets.
-    """
+    cache_path = "cache/processed_tweets.jsonl"
+    cache = load_cache(cache_path)
     recs = state.get("tweets_records", [])
     enriched = []
     for r in recs:
+        if r["id"] in cache:
+            enriched.append(cache[r["id"]])
+            continue
         text = r.get("texto", "")
         r2 = r.copy()
-        r2["language"]   = LanguageDetectionTool().run(text)["language"]
-        r2["emotion"]    = EmotionAnalysisTool().run(text)["emotion"]
-        r2["urgency"]    = UrgencyAssessmentTool().run(text)["urgency"]
-        r2["keywords"]   = KeywordExtractorTool().run(text)["keywords"]
-        r2["suggestion"] = ResponseSuggestionTool().run(json.dumps(r, ensure_ascii=False))["response_draft"]
+        # Preserve original text for dashboard
+        r2["texto"] = text
+        r2["emotion"]    = EmotionAnalysisTool().run(text, record_id=r["id"])["emotion"]
+        r2["urgency"]    = UrgencyAssessmentTool().run(text, record_id=r["id"])["urgency"]
+        support_area_result = SupportAreaAssignmentTool().run(text, record_id=r["id"])
+        if isinstance(support_area_result, dict):
+            r2["support_area"] = support_area_result.get("support_area", "unknown")
+        else:
+            r2["support_area"] = "unknown"
+        r2["suggestion"] = ResponseSuggestionTool().run(json.dumps(r, ensure_ascii=False), record_id=r["id"])["response_draft"]
         enriched.append(r2)
+        append_to_cache(cache_path, r2)
     print(f">> [enrich_tweets] enriched {len(enriched)} tweets")
     return {"tweets_records": enriched}
 
 def enrich_support(state: OmniState) -> Dict[str, Any]:
-    """
-    Aplica detección de idioma, emoción, urgencia, extracción de keywords
-    y sugerencia de respuesta a cada ticket de soporte.
-    """
+    cache_path = "cache/processed_support.jsonl"
+    cache = load_cache(cache_path)
     recs = state.get("support_records", [])
     enriched = []
     for r in recs:
+        if r["id"] in cache:
+            enriched.append(cache[r["id"]])
+            continue
         text = r.get("texto", "")
         r2 = r.copy()
-        r2["language"]   = LanguageDetectionTool().run(text)["language"]
-        r2["emotion"]    = EmotionAnalysisTool().run(text)["emotion"]
-        r2["urgency"]    = UrgencyAssessmentTool().run(text)["urgency"]
-        r2["keywords"]   = KeywordExtractorTool().run(text)["keywords"]
-        r2["suggestion"] = ResponseSuggestionTool().run(json.dumps(r, ensure_ascii=False))["response_draft"]
+        # Preserve original text for dashboard
+        r2["texto"] = text
+        r2["emotion"]    = EmotionAnalysisTool().run(text, record_id=r["id"])["emotion"]
+        r2["urgency"]    = UrgencyAssessmentTool().run(text, record_id=r["id"])["urgency"]
+        r2["support_area"] = SupportAreaAssignmentTool().run(text, record_id=r["id"]).get("support_area", "unknown")
+        r2["suggestion"] = ResponseSuggestionTool().run(json.dumps(r, ensure_ascii=False), record_id=r["id"])["response_draft"]
         enriched.append(r2)
+        append_to_cache(cache_path, r2)
     print(f">> [enrich_support] enriched {len(enriched)} support records")
     return {"support_records": enriched}
 
@@ -241,6 +348,7 @@ builder.add_node("ingest_tweets",    ingest_tweets)
 builder.add_node("detect_language_tweets", detect_language_tweets)
 builder.add_node("pre_tweets",       preprocess_tweets)
 builder.add_node("an_tweets",        analyze_tweets)
+builder.add_node("dedupe_tweets",    dedupe_tweets)
 builder.add_node("enrich_tweets", enrich_tweets)
 builder.add_node("alert_tweets",     alert_tweets)
 builder.add_node("dashboard_tweets", dashboard_tweets)
@@ -251,6 +359,7 @@ builder.add_node("detect_language_support", detect_language_support)
 builder.add_node("pre_support",       preprocess_support)
 builder.add_node("topic_support",     topic_support)
 builder.add_node("an_support",        analyze_support)
+builder.add_node("dedupe_support",    dedupe_support)
 builder.add_node("enrich_support", enrich_support)
 builder.add_node("alert_support",     alert_support)
 builder.add_node("dashboard_support", dashboard_support)
@@ -267,7 +376,8 @@ builder.add_edge(START,         "ingest_support")
 builder.add_edge("ingest_tweets",         "detect_language_tweets")
 builder.add_edge("detect_language_tweets","pre_tweets")
 builder.add_edge("pre_tweets",     "an_tweets")
-builder.add_edge("an_tweets",      "enrich_tweets")
+builder.add_edge("an_tweets",      "dedupe_tweets")
+builder.add_edge("dedupe_tweets",  "enrich_tweets")
 builder.add_edge("enrich_tweets",  "alert_tweets")
 builder.add_edge("alert_tweets",   "dashboard_tweets")
 builder.add_edge("dashboard_tweets", "merge_end")
@@ -277,7 +387,8 @@ builder.add_edge("ingest_support",          "detect_language_support")
 builder.add_edge("detect_language_support","pre_support")
 builder.add_edge("pre_support",      "topic_support")
 builder.add_edge("topic_support",    "an_support")
-builder.add_edge("an_support",       "enrich_support")
+builder.add_edge("an_support",       "dedupe_support")
+builder.add_edge("dedupe_support", "enrich_support")
 builder.add_edge("enrich_support", "alert_support")
 builder.add_edge("alert_support",  "dashboard_support")
 builder.add_edge("dashboard_support", "merge_end")

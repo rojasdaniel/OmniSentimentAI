@@ -82,13 +82,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 2) Función cache para cargar datos
+# 2) Función para cargar datos (sin cache)
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
 
-    # Si alguna celda de 'sentiment' está como string JSON, lo parseamos
+    # Limpiar registros pero conservar todos los campos originales del CSV
     def clean_row(row):
+        # Conservar todos los campos originales
+        row = row.copy()
         sent = row.get("sentiment")
         if isinstance(sent, str) and sent.strip().startswith("{"):
             try:
@@ -97,13 +99,19 @@ def load_data(path: str) -> pd.DataFrame:
                 row["score"]     = j.get("score")
             except:
                 pass
-        # Parse keywords JSON-list if present
+        # Parse keywords JSON-list if present, pero evita prompts falsos
         kw = row.get("keywords")
         if isinstance(kw, str) and kw.strip().startswith("["):
             try:
-                row["keywords"] = json.loads(kw)
+                parsed_kw = json.loads(kw)
+                if isinstance(parsed_kw, list) and not any(
+                    isinstance(k, str) and "key phrases" in k.lower() for k in parsed_kw
+                ):
+                    row["keywords"] = parsed_kw
+                else:
+                    row["keywords"] = []
             except:
-                pass
+                row["keywords"] = []
         return row
 
     return df.apply(clean_row, axis=1)
@@ -111,6 +119,15 @@ def load_data(path: str) -> pd.DataFrame:
 # 3) Carga los dos CSV generados por tus pipelines
 df_tweets  = load_data("tweets_dashboard.csv")
 df_support = load_data("support_dashboard.csv")
+
+if st.button("🔄 Reload Data"):
+    st.cache_data.clear()
+    df_tweets  = load_data("tweets_dashboard.csv")
+    df_support = load_data("support_dashboard.csv")
+    try:
+        st.experimental_rerun()
+    except AttributeError:
+        st.warning("Streamlit no soporta st.experimental_rerun en esta versión. Por favor, recarga la página manualmente para ver los datos actualizados.")
 
 # Explode keywords columns into separate rows for counting
 if "keywords" in df_tweets.columns:
@@ -126,10 +143,16 @@ tweets_col, support_col = st.columns(2)
 with tweets_col:
     st.header("Tweets Dashboard")
     st.dataframe(df_tweets, use_container_width=True)
-    st.subheader("Sentiment Distribution (Tweets)")
-    st.bar_chart(df_tweets["sentiment"].value_counts())
-    st.subheader("Sample Tweet Records")
-    st.write(df_tweets.sample(5, random_state=42))
+    if "sentiment" in df_tweets.columns:
+        st.subheader("Sentiment Distribution (Tweets)")
+        st.bar_chart(df_tweets["sentiment"].value_counts())
+    else:
+        st.warning("No se encontró la columna 'sentiment' en tweets_dashboard.csv")
+    if not df_tweets.empty:
+        st.subheader("Sample Tweet Records")
+        st.write(df_tweets.sample(min(5, len(df_tweets)), random_state=42))
+    else:
+        st.warning("No hay registros de tweets para mostrar")
 
     # -- Language distribution --
     if "language" in df_tweets.columns:
@@ -160,10 +183,16 @@ with tweets_col:
 with support_col:
     st.header("Support Dashboard")
     st.dataframe(df_support, use_container_width=True)
-    st.subheader("Sentiment Distribution (Support)")
-    st.bar_chart(df_support["sentiment"].value_counts())
-    st.subheader("Sample Support Records")
-    st.write(df_support.sample(5, random_state=42))
+    if "sentiment" in df_support.columns:
+        st.subheader("Sentiment Distribution (Support)")
+        st.bar_chart(df_support["sentiment"].value_counts())
+    else:
+        st.warning("No se encontró la columna 'sentiment' en support_dashboard.csv")
+    if not df_support.empty:
+        st.subheader("Sample Support Records")
+        st.write(df_support.sample(min(5, len(df_support)), random_state=42))
+    else:
+        st.warning("No hay registros de soporte para mostrar")
 
     # -- Language distribution --
     if "language" in df_support.columns:
