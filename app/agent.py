@@ -110,7 +110,8 @@ def analyze_tweets(state: OmniState) -> Dict[str, Any]:
         sug = ResponseSuggestionTool().run(
             json.dumps(d, ensure_ascii=False),
             record_id=d["id"],
-            user=d.get("user", "")
+            user=d.get("user", ""),
+            language=d.get("language", "")
         )
         # Assemble full record including all fields
         out.append({
@@ -175,6 +176,7 @@ def analyze_support(state: OmniState) -> Dict[str, Any]:
             "id": d["id"],
             "canal": d["canal"],
             "author_id": d.get("author_id"),
+            "language": d.get("language"),
             "topic": d["topic"],
             "texto": d.get("texto"),
             "sentiment": s.get("sentiment"),
@@ -315,7 +317,8 @@ def enrich_tweets(state: OmniState) -> Dict[str, Any]:
         r2["suggestion"] = ResponseSuggestionTool().run(
             json.dumps(r, ensure_ascii=False),
             record_id=r["id"],
-            user=r.get("user", "")
+            user=r.get("user", ""),
+            language=r.get("language", "")
         )["response_draft"]
         enriched.append(r2)
         append_to_cache(cache_path, r2)
@@ -341,7 +344,8 @@ def enrich_support(state: OmniState) -> Dict[str, Any]:
         r2["suggestion"] = ResponseSuggestionTool().run(
             json.dumps(r, ensure_ascii=False),
             record_id=r["id"],
-            user=r.get("author_id", "")
+            user=r.get("author_id", ""),
+            language=r.get("language", "")
         )["response_draft"]
         enriched.append(r2)
         append_to_cache(cache_path, r2)

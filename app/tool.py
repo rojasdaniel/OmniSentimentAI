@@ -552,16 +552,18 @@ class ResponseSuggestionTool(BaseTool):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._prompt = PromptTemplate(
-            input_variables=["text", "user"],
+            input_variables=["text", "user", "language"],
             template=(
-                "Generate a polite and concise response to the following message "
-                "from user {user}:\n\n"
-                "{text}"
+                "You are a customer support assistant. "
+                "Generate a polite and concise response in the same language as the original message, which is {language}. "
+                "Address user {user} directly and provide helpful information.\n\n"
+                "Original message:\n{text}\n\n"
+                "Response:"
             )
         )
         self._pipeline = self._prompt | llm
 
-    def _run(self, text: str, record_id: str = None, user: str = "") -> Dict[str, Any]:
+    def _run(self, text: str, record_id: str = None, user: str = "", language: str = "") -> Dict[str, Any]:
         # Use text hash as record_id if none provided
         if record_id is None:
             record_id = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -575,7 +577,7 @@ class ResponseSuggestionTool(BaseTool):
                                 return {"response_draft": record["response_draft"]}
                         except Exception:
                             continue
-        draft = self._pipeline.invoke({"text": text, "user": user}).strip()
+        draft = self._pipeline.invoke({"text": text, "user": user, "language": language}).strip()
         result = {"response_draft": draft}
         if record_id:
             to_store = {"id": record_id, "response_draft": draft}
@@ -583,5 +585,5 @@ class ResponseSuggestionTool(BaseTool):
                 f.write(json.dumps(to_store, ensure_ascii=False) + "\n")
         return result
 
-    async def _arun(self, text: str, record_id: str = None, user: str = "") -> Dict[str, Any]:
-        return self._run(text, record_id=record_id, user=user)
+    async def _arun(self, text: str, record_id: str = None, user: str = "", language: str = "") -> Dict[str, Any]:
+        return self._run(text, record_id=record_id, user=user, language=language)

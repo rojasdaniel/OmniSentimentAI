@@ -152,11 +152,7 @@ with tweets_col:
         st.bar_chart(df_tweets["sentiment"].value_counts())
     else:
         st.warning("No se encontró la columna 'sentiment' en tweets_dashboard.csv")
-    if not df_tweets.empty:
-        st.subheader("Sample Tweet Records")
-        st.write(df_tweets.sample(min(5, len(df_tweets)), random_state=42))
-    else:
-        st.warning("No hay registros de tweets para mostrar")
+
 
     # -- Language distribution --
     if "language" in df_tweets.columns:
@@ -174,15 +170,11 @@ with tweets_col:
         st.bar_chart(df_tweets["urgency"].value_counts())
 
     # -- Top Keywords --
-    if "keywords_list" in df_tweets.columns:
-        st.subheader("Top Keywords")
-        top_kw = df_tweets["keywords_list"].explode().value_counts().head(10)
+    if "support_area" in df_tweets.columns:
+        st.subheader("Top Support Area")
+        top_kw = df_tweets["support_area"].explode().value_counts().head(10)
         st.bar_chart(top_kw)
 
-    # -- Sample Response Suggestions --
-    if "suggestion" in df_tweets.columns:
-        st.subheader("Sample Response Suggestions")
-        st.write(df_tweets["suggestion"].sample(5, random_state=42))
 
 with support_col:
     st.header("Support Dashboard")
@@ -192,11 +184,7 @@ with support_col:
         st.bar_chart(df_support["sentiment"].value_counts())
     else:
         st.warning("No se encontró la columna 'sentiment' en support_dashboard.csv")
-    if not df_support.empty:
-        st.subheader("Sample Support Records")
-        st.write(df_support.sample(min(5, len(df_support)), random_state=42))
-    else:
-        st.warning("No hay registros de soporte para mostrar")
+
 
     # -- Language distribution --
     if "language" in df_support.columns:
@@ -214,15 +202,12 @@ with support_col:
         st.bar_chart(df_support["urgency"].value_counts())
 
     # -- Top Keywords --
-    if "keywords_list" in df_support.columns:
-        st.subheader("Top Keywords (Support)")
-        top_kw_s = df_support["keywords_list"].explode().value_counts().head(10)
+    if "support_area" in df_support.columns:
+        st.subheader("Top Support Area (Support)")
+        top_kw_s = df_support["support_area"].explode().value_counts().head(10)
         st.bar_chart(top_kw_s)
 
-    # -- Sample Response Suggestions --
-    if "suggestion" in df_support.columns:
-        st.subheader("Sample Response Suggestions (Support)")
-        st.write(df_support["suggestion"].sample(5, random_state=42))
+
 
 # --- Chat en la barra lateral ---
 st.sidebar.header("Chat")
