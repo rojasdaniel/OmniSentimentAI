@@ -9,6 +9,8 @@ from typing import List, Dict, Any
 from langgraph.graph import StateGraph, START, END
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
+from collections import Counter
+from dateutil import parser
 
 from langchain.schema import HumanMessage
 from langchain.chat_models import ChatOpenAI
@@ -286,6 +288,38 @@ def detect_sarcasm_support(state: OmniState) -> Dict[str, Any]:
     print(f">> [detect_sarcasm_support] detected sarcasm for {len(support)} support records")
     return {"support": support}
 
+
+# --- New functions ---
+def sentiment_trend_tweets(state: OmniState) -> Dict[str, Any]:
+    """
+    Calcula la proporción de sentimientos en el lote de tweets y alerta si más de 50% son negativos.
+    """
+    recs = state.get("tweets_records", [])
+    counts = Counter(r.get("sentiment") for r in recs)
+    total = len(recs) or 1
+    trend = {sent: counts.get(sent, 0) / total for sent in ("positive", "neutral", "negative")}
+    alert = trend.get("negative", 0) > 0.5
+    print(f">> [sentiment_trend_tweets] trend={trend}, alert={alert}")
+    return {"sentiment_trend": trend, "sentiment_alert": alert}
+
+def measure_response_time_support(state: OmniState) -> Dict[str, Any]:
+    """
+    Calcula el tiempo de respuesta en minutos para cada ticket de soporte.
+    """
+    raw = state.get("support", [])
+    time_map = {d["id"]: parser.parse(d["timestamp"]) for d in raw if d.get("timestamp")}
+    recs = state.get("support_records", [])
+    for rec in recs:
+        req_id = rec.get("in_response_to_tweet_id")
+        if req_id and req_id in time_map and rec.get("timestamp"):
+            t_req = time_map[req_id]
+            t_resp = parser.parse(rec["timestamp"])
+            rec["response_time_minutes"] = (t_resp - t_req).total_seconds() / 60
+        else:
+            rec["response_time_minutes"] = None
+    print(f">> [measure_response_time_support] computed response times for {len(recs)} records")
+    return {"support_records": recs}
+
 def load_cache(path):
     """
     Carga un JSONL cacheando por id, pero mergeando entradas
@@ -382,6 +416,7 @@ def merge_end(state: OmniState) -> Dict[str, Any]:
 # ─── Construcción del grafo ─────────────────────────────────
 builder = StateGraph(OmniState)
 
+#
 # Tweets pipeline
 builder.add_node("ingest_tweets",    ingest_tweets)
 builder.add_node("detect_language_tweets", detect_language_tweets)
@@ -392,6 +427,10 @@ builder.add_node("pre_tweets",       preprocess_tweets)
 builder.add_node("an_tweets",        analyze_tweets)
 builder.add_node("dedupe_tweets",    dedupe_tweets)
 builder.add_node("enrich_tweets", enrich_tweets)
+# --- Insert sentiment_trend_tweets node after enrich_tweets ---
+builder.add_node("sentiment_trend_tweets", sentiment_trend_tweets)
+builder.add_edge("enrich_tweets", "sentiment_trend_tweets")
+builder.add_edge("sentiment_trend_tweets", "alert_tweets")
 builder.add_node("alert_tweets",     alert_tweets)
 builder.add_node("dashboard_tweets", dashboard_tweets)
 
@@ -406,6 +445,10 @@ builder.add_node("topic_support",     topic_support)
 builder.add_node("an_support",        analyze_support)
 builder.add_node("dedupe_support",    dedupe_support)
 builder.add_node("enrich_support", enrich_support)
+# --- Insert measure_response_time_support node after enrich_support ---
+builder.add_node("measure_response_time_support", measure_response_time_support)
+builder.add_edge("enrich_support", "measure_response_time_support")
+builder.add_edge("measure_response_time_support", "alert_support")
 builder.add_node("alert_support",     alert_support)
 builder.add_node("dashboard_support", dashboard_support)
 # Graph construction section
@@ -422,7 +465,7 @@ builder.add_edge("ingest_tweets",         "detect_language_tweets")
 builder.add_edge("pre_tweets",     "an_tweets")
 builder.add_edge("an_tweets",      "dedupe_tweets")
 builder.add_edge("dedupe_tweets",  "enrich_tweets")
-builder.add_edge("enrich_tweets",  "alert_tweets")
+# builder.add_edge("enrich_tweets",  "alert_tweets")  # replaced by sentiment_trend_tweets
 builder.add_edge("alert_tweets",   "dashboard_tweets")
 builder.add_edge("dashboard_tweets", "merge_end")
 
@@ -432,7 +475,7 @@ builder.add_edge("pre_support",      "topic_support")
 builder.add_edge("topic_support",    "an_support")
 builder.add_edge("an_support",       "dedupe_support")
 builder.add_edge("dedupe_support", "enrich_support")
-builder.add_edge("enrich_support", "alert_support")
+# builder.add_edge("enrich_support", "alert_support")  # replaced by measure_response_time_support
 builder.add_edge("alert_support",  "dashboard_support")
 builder.add_edge("dashboard_support", "merge_end")
 

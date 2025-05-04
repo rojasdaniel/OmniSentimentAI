@@ -120,6 +120,30 @@ def load_data(path: str) -> pd.DataFrame:
 df_tweets  = load_data("tweets_dashboard.csv")
 df_support = load_data("support_dashboard.csv")
 
+# Convert support timestamp to datetime and add date filter (only if multiple dates)
+if "timestamp" in df_support.columns:
+    df_support["timestamp"] = pd.to_datetime(
+        df_support["timestamp"],
+        format="%a %b %d %H:%M:%S %z %Y",
+        utc=True,
+        errors="coerce"
+    )
+    min_date = df_support["timestamp"].min().date()
+    max_date = df_support["timestamp"].max().date()
+    if min_date < max_date:
+        start_date, end_date = st.slider(
+            "Rango de fechas (Soporte)",
+            min_value=min_date,
+            max_value=max_date,
+            value=(min_date, max_date)
+        )
+        df_support = df_support[
+            (df_support["timestamp"].dt.date >= start_date) &
+            (df_support["timestamp"].dt.date <= end_date)
+        ]
+    else:
+        st.write(f"Mostrando datos para la fecha: {min_date}")
+
 # Truncate the 'id' column to the first 4 characters for display
 df_tweets["id"] = df_tweets["id"].astype(str).str[:4]
 df_support["id"] = df_support["id"].astype(str).str[:4]
@@ -169,6 +193,18 @@ with tab_tweets:
         # Convert boolean to string for counting
         st.bar_chart(df_tweets["sarcasm"].astype(str).value_counts())
 
+        # Sentiment trend and alert
+        st.subheader("Sentiment Trend (Tweets)")
+        trend = df_tweets["sentiment"].value_counts(normalize=True)
+        st.write(trend.to_dict())
+        if trend.get("negative", 0) > 0.5:
+            st.error("⚠️ Más del 50% de tweets negativos en este lote")
+
+    if "user" in df_tweets.columns:
+        st.subheader("Top Users (Tweets)")
+        top_users = df_tweets["user"].value_counts().head(10)
+        st.bar_chart(top_users)
+
 with tab_support:
     st.header("Support Dashboard")
     st.dataframe(df_support, use_container_width=True)
@@ -191,6 +227,19 @@ with tab_support:
     if "sarcasm" in df_support.columns:
         st.subheader("Sarcasm Detection (Support)")
         st.bar_chart(df_support["sarcasm"].astype(str).value_counts())
+
+    if "response_time_minutes" in df_support.columns:
+        st.subheader("Response Time (minutos)")
+        st.bar_chart(df_support["response_time_minutes"].dropna())
+
+    if "inbound" in df_support.columns:
+        st.subheader("Inbound vs Outbound (Support)")
+        st.bar_chart(df_support["inbound"].value_counts())
+
+    if "author_id" in df_support.columns:
+        st.subheader("Top Authors (Support)")
+        top_authors = df_support["author_id"].value_counts().head(10)
+        st.bar_chart(top_authors)
 
 
 
