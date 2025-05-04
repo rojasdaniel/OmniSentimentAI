@@ -7,6 +7,11 @@ import pandas as pd
 from typing_extensions import TypedDict
 from typing import List, Dict, Any
 from langgraph.graph import StateGraph, START, END
+from langchain_core.tools import BaseTool
+from langgraph.prebuilt import ToolNode
+
+from langchain.schema import HumanMessage
+from langchain.chat_models import ChatOpenAI
 
 from app.tool import (
     KaggleIngestionTool,
@@ -17,6 +22,12 @@ from app.tool import (
     IntentToolEn,
     AlertTool,
     DashboardTool,
+    LanguageDetectionTool,
+    UrgencyAssessmentTool,
+    EmotionAnalysisTool,
+    KeywordExtractorTool,
+    DuplicateDetectionTool,
+    ResponseSuggestionTool,
 )
 
 # Descargar stopwords una sola vez
@@ -36,15 +47,47 @@ class OmniState(TypedDict, total=False):
     support_records: List[Dict[str, Any]]
     support_dashboard: str
 
+def chat_node(state: OmniState) -> Dict[str, Any]:
+    """
+    Nodo de chat: usa state['chat'] y las rutas
+    state['tweets_dashboard'], state['support_dashboard'] para
+    cargar KB, luego responde en 'chat_response'.
+    """
+    history = state.get("chat", [])
+    if not history:
+        return {}
+
+    # Carga KB de ambos dashboards
+    tweets_csv  = state.get("tweets_dashboard", "tweets_dashboard.csv")
+    support_csv = state.get("support_dashboard", "support_dashboard.csv")
+    try:
+        df_t = pd.read_csv(tweets_csv)
+        df_s = pd.read_csv(support_csv)
+        df_kb = pd.concat([df_t, df_s], ignore_index=True)
+        kb_excerpt = df_kb.head(20).to_csv(index=False)
+    except Exception as e:
+        kb_excerpt = f"Error loading dashboards: {e}"
+
+    # Último mensaje del usuario
+    last_user = [m for m in history if m.get("role") == "user"][-1]["content"]
+    prompt = (
+        "Eres un asistente que responde consultando estos datos CSV:\n"
+        f"{kb_excerpt}\n\n"
+        f"Pregunta: {last_user}\n"
+        "Responde basándote en esos datos."
+    )
+
+    llm_chat = ChatOpenAI(temperature=0)
+    response = llm_chat([HumanMessage(content=prompt)])
+    return {"chat_response": response.content}
+
+
 # ─── Tweets pipeline ────────────────────────────────────────
 def ingest_tweets(state: OmniState) -> Dict[str, Any]:
     print(">> [ingest_tweets] start, state keys:", list(state.keys()))
-    n = state.get("tweets_sample_size", 10)
-    print(f">> [ingest_tweets] sample_size from state: {n}")
-    all_tweets = KaggleIngestionTool(sample_size=n).run(state["tweets_path"])
-    truncated = all_tweets[:n]
-    print(f">> [ingest_tweets] loaded {len(all_tweets)} tweets, truncated to {len(truncated)}")
-    return {"tweets": truncated}
+    tweets = KaggleIngestionTool(sample_size=10).run(state["tweets_path"])
+    print(f">> [ingest_tweets] loaded {len(tweets)} tweets (limit=10)")
+    return {"tweets": tweets}
 
 def preprocess_tweets(state: OmniState) -> Dict[str, Any]:
     pre = PreprocessingTool(stopwords=SW_EN)
@@ -61,30 +104,12 @@ def analyze_tweets(state: OmniState) -> Dict[str, Any]:
     print(f">> [analyze_tweets] created {len(out)} tweet records")
     return {"tweets_records": out}
 
-def alert_tweets(state: OmniState) -> Dict[str, Any]:
-    for rec in state["tweets_records"]:
-        AlertTool().run(json.dumps(rec, ensure_ascii=False))
-    return {}
-
-def dashboard_tweets(state: OmniState) -> Dict[str, Any]:
-    # Generar CSV específico para tweets
-    rows = state["tweets_records"]
-    df = pd.DataFrame(rows)
-    filename = "tweets_dashboard.csv"
-    df.to_csv(filename, index=False)
-    print(f">> [dashboard_tweets] wrote {len(df)} rows to {filename}")
-    return {"tweets_dashboard": filename}
-
-
 # ─── Soporte pipeline ───────────────────────────────────────
 def ingest_support(state: OmniState) -> Dict[str, Any]:
     print(">> [ingest_support] start, state keys:", list(state.keys()))
-    n = state.get("support_sample_size", 10)
-    print(f">> [ingest_support] sample_size from state: {n}")
-    all_support = SupportIngestionTool(sample_size=n).run(state["support_path"])
-    truncated = all_support[:n]
-    print(f">> [ingest_support] loaded {len(all_support)} support records, truncated to {len(truncated)}")
-    return {"support": truncated}
+    support = SupportIngestionTool(sample_size=10).run(state["support_path"])
+    print(f">> [ingest_support] loaded {len(support)} support records (limit=10)")
+    return {"support": support}
 
 def preprocess_support(state: OmniState) -> Dict[str, Any]:
     pre = PreprocessingTool(stopwords=SW_EN)
@@ -106,53 +131,162 @@ def analyze_support(state: OmniState) -> Dict[str, Any]:
     print(f">> [analyze_support] created {len(out)} support records")
     return {"support_records": out}
 
+def alert_tweets(state: OmniState) -> Dict[str, Any]:
+    """
+    Dispara AlertTool para cada tweet negativo + queja.
+    """
+    for rec in state.get("tweets_records", []):
+        AlertTool().run(json.dumps(rec, ensure_ascii=False))
+    return {}
+
+def dashboard_tweets(state: OmniState) -> Dict[str, Any]:
+    """
+    Genera tweets_dashboard.csv con los registros de tweets.
+    """
+    df = pd.DataFrame(state.get("tweets_records", []))
+    path = "tweets_dashboard.csv"
+    df.to_csv(path, index=False)
+    return {"tweets_dashboard": path}
+
 def alert_support(state: OmniState) -> Dict[str, Any]:
-    for rec in state["support_records"]:
+    """
+    Dispara AlertTool para cada ticket de soporte negativo + queja.
+    """
+    for rec in state.get("support_records", []):
         AlertTool().run(json.dumps(rec, ensure_ascii=False))
     return {}
 
 def dashboard_support(state: OmniState) -> Dict[str, Any]:
-    # Generar CSV específico para soporte
-    rows = state["support_records"]
-    df = pd.DataFrame(rows)
-    filename = "support_dashboard.csv"
-    df.to_csv(filename, index=False)
-    print(f">> [dashboard_support] wrote {len(df)} rows to {filename}")
-    return {"support_dashboard": filename}
+    """
+    Genera support_dashboard.csv con los registros de soporte.
+    """
+    df = pd.DataFrame(state.get("support_records", []))
+    path = "support_dashboard.csv"
+    df.to_csv(path, index=False)
+    return {"support_dashboard": path}
 
+def detect_language_tweets(state: OmniState) -> Dict[str, Any]:
+    """
+    Detecta el idioma de cada tweet y lo anota en state['tweets'].
+    """
+    tweets = state.get("tweets", [])
+    for d in tweets:
+        lang = LanguageDetectionTool().run(d.get("texto", ""))["language"]
+        d["language"] = lang
+    print(f">> [detect_language_tweets] detected languages for {len(tweets)} tweets")
+    return {"tweets": tweets}
+
+def detect_language_support(state: OmniState) -> Dict[str, Any]:
+    """
+    Detecta el idioma de cada registro de soporte y lo anota en state['support'].
+    """
+    support = state.get("support", [])
+    for d in support:
+        lang = LanguageDetectionTool().run(d.get("texto", ""))["language"]
+        d["language"] = lang
+    print(f">> [detect_language_support] detected languages for {len(support)} support records")
+    return {"support": support}
+
+# ─── Enrichment nodes ──────────────────────────────────────
+def enrich_tweets(state: OmniState) -> Dict[str, Any]:
+    """
+    Aplica detección de idioma, emoción, urgencia, extracción de keywords
+    y sugerencia de respuesta a cada registro de tweets.
+    """
+    recs = state.get("tweets_records", [])
+    enriched = []
+    for r in recs:
+        text = r.get("texto", "")
+        r2 = r.copy()
+        r2["language"]   = LanguageDetectionTool().run(text)["language"]
+        r2["emotion"]    = EmotionAnalysisTool().run(text)["emotion"]
+        r2["urgency"]    = UrgencyAssessmentTool().run(text)["urgency"]
+        r2["keywords"]   = KeywordExtractorTool().run(text)["keywords"]
+        r2["suggestion"] = ResponseSuggestionTool().run(json.dumps(r, ensure_ascii=False))["response_draft"]
+        enriched.append(r2)
+    print(f">> [enrich_tweets] enriched {len(enriched)} tweets")
+    return {"tweets_records": enriched}
+
+def enrich_support(state: OmniState) -> Dict[str, Any]:
+    """
+    Aplica detección de idioma, emoción, urgencia, extracción de keywords
+    y sugerencia de respuesta a cada ticket de soporte.
+    """
+    recs = state.get("support_records", [])
+    enriched = []
+    for r in recs:
+        text = r.get("texto", "")
+        r2 = r.copy()
+        r2["language"]   = LanguageDetectionTool().run(text)["language"]
+        r2["emotion"]    = EmotionAnalysisTool().run(text)["emotion"]
+        r2["urgency"]    = UrgencyAssessmentTool().run(text)["urgency"]
+        r2["keywords"]   = KeywordExtractorTool().run(text)["keywords"]
+        r2["suggestion"] = ResponseSuggestionTool().run(json.dumps(r, ensure_ascii=False))["response_draft"]
+        enriched.append(r2)
+    print(f">> [enrich_support] enriched {len(enriched)} support records")
+    return {"support_records": enriched}
+
+def merge_end(state: OmniState) -> Dict[str, Any]:
+    """
+    Nodo de fusión: espera ambas ramas de dashboard y luego termina.
+    """
+    print(">> [merge_end] both pipelines completed")
+    return {}
 
 # ─── Construcción del grafo ─────────────────────────────────
 builder = StateGraph(OmniState)
 
-# Tweets branch
-builder.add_node("ingest_tweets",   ingest_tweets)
-builder.add_node("pre_tweets",      preprocess_tweets)
-builder.add_node("an_tweets",       analyze_tweets)
-builder.add_node("alert_tweets",    alert_tweets)
-builder.add_node("dash_tweets",     dashboard_tweets)
-builder.add_edge(START,             "ingest_tweets")
-builder.add_edge("ingest_tweets",   "pre_tweets")
-builder.add_edge("pre_tweets",      "an_tweets")
-builder.add_edge("an_tweets",       "alert_tweets")
-builder.add_edge("alert_tweets",    "dash_tweets")
-builder.add_edge("dash_tweets",     END)
+# Tweets pipeline
+builder.add_node("ingest_tweets",    ingest_tweets)
+builder.add_node("detect_language_tweets", detect_language_tweets)
+builder.add_node("pre_tweets",       preprocess_tweets)
+builder.add_node("an_tweets",        analyze_tweets)
+builder.add_node("enrich_tweets", enrich_tweets)
+builder.add_node("alert_tweets",     alert_tweets)
+builder.add_node("dashboard_tweets", dashboard_tweets)
 
-# Support branch
-builder.add_node("ingest_support",  ingest_support)
-builder.add_node("pre_support",     preprocess_support)
-builder.add_node("topic_support",   topic_support)
-builder.add_node("an_support",      analyze_support)
-builder.add_node("alert_support",   alert_support)
-builder.add_node("dash_support",    dashboard_support)
-builder.add_edge(START,             "ingest_support")
-builder.add_edge("ingest_support",  "pre_support")
-builder.add_edge("pre_support",     "topic_support")
-builder.add_edge("topic_support",   "an_support")
-builder.add_edge("an_support",      "alert_support")
-builder.add_edge("alert_support",   "dash_support")
-builder.add_edge("dash_support",    END)
+# Support pipeline
+builder.add_node("ingest_support",    ingest_support)
+builder.add_node("detect_language_support", detect_language_support)
+builder.add_node("pre_support",       preprocess_support)
+builder.add_node("topic_support",     topic_support)
+builder.add_node("an_support",        analyze_support)
+builder.add_node("enrich_support", enrich_support)
+builder.add_node("alert_support",     alert_support)
+builder.add_node("dashboard_support", dashboard_support)
+# Graph construction section
+builder.add_node("chat", chat_node)
+# Merge node
+builder.add_node("merge_end", merge_end)
 
-# Compilar grafo una sola vez
+# Define transitions: branch from START to both pipelines
+builder.add_edge(START,         "ingest_tweets")
+builder.add_edge(START,         "ingest_support")
+
+# Tweets flow
+builder.add_edge("ingest_tweets",         "detect_language_tweets")
+builder.add_edge("detect_language_tweets","pre_tweets")
+builder.add_edge("pre_tweets",     "an_tweets")
+builder.add_edge("an_tweets",      "enrich_tweets")
+builder.add_edge("enrich_tweets",  "alert_tweets")
+builder.add_edge("alert_tweets",   "dashboard_tweets")
+builder.add_edge("dashboard_tweets", "merge_end")
+
+# Support flow
+builder.add_edge("ingest_support",          "detect_language_support")
+builder.add_edge("detect_language_support","pre_support")
+builder.add_edge("pre_support",      "topic_support")
+builder.add_edge("topic_support",    "an_support")
+builder.add_edge("an_support",       "enrich_support")
+builder.add_edge("enrich_support", "alert_support")
+builder.add_edge("alert_support",  "dashboard_support")
+builder.add_edge("dashboard_support", "merge_end")
+
+builder.add_edge("dashboard_tweets", "merge_end")
+builder.add_edge("dashboard_support", "merge_end")
+builder.add_edge("merge_end", "chat")
+builder.add_edge("chat", END)
+
 print("🏗️ Construyendo grafo…")
 graph = builder.compile()
 print("✅ Grafo listo.")
@@ -164,4 +298,5 @@ if __name__ == "__main__":
         "support_path": "twcs.csv",
     }
     final = graph.invoke(state0)
-    print("➡️ Dashboard guardado en:", final.get("dashboard_path"))
+    print("➡️ Tweets dashboard:", final.get("tweets_dashboard"))
+    print("➡️ Support dashboard:", final.get("support_dashboard"))

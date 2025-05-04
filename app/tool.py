@@ -27,6 +27,7 @@ import json
 import pandas as pd
 import re
 from dotenv import load_dotenv
+from typing import Any, List, Dict
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -36,7 +37,6 @@ if not OPENAI_API_KEY:
 print("🔑 OPENAI_API_KEY is", "FOUND" if OPENAI_API_KEY else "MISSING")
 # LLM global
 llm = OpenAI(openai_api_key=OPENAI_API_KEY, temperature=0)
-from typing import List, Dict, Any
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
 from langchain.prompts import PromptTemplate
@@ -56,12 +56,18 @@ class KaggleIngestionTool(BaseTool):
         registros = []
         with open(file_path, encoding="latin-1") as f:
             reader = csv.reader(f)
-            for _, tid, date, *_ , text in reader:
+            for i, fila in enumerate(reader):
+                if i >= self.sample_size:
+                    break
+                # Sentiment140 schema: [0]=sentiment, [1]=id, [2]=date, [3]=query, [4]=user, [5]=text
+                _, tid, date, query, user, text = fila
                 registros.append({
                     "id":        tid,
                     "canal":     "twitter",
                     "texto":     text,
                     "timestamp": date,
+                    "query":     query,
+                    "user":      user,
                 })
         return registros
 
@@ -143,12 +149,20 @@ class SentimentToolEn(BaseTool):
         self._pipeline = self._prompt | llm
 
     def _run(self, text: str) -> Dict[str, Any]:
-        # Invocamos la secuencia con invoke()
         raw = self._pipeline.invoke({"text": text})
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            return {"sentiment": raw.strip(), "score": None}
+            # Try to extract "Sentiment: X Score: Y"
+            m = re.search(r"Sentiment[:]?\s*([A-Za-z]+).*?Score[:]?\s*([0-9]*\.?[0-9]+)", raw, re.IGNORECASE)
+            if m:
+                sentiment = m.group(1).lower()
+                score = float(m.group(2))
+            else:
+                # fallback single label
+                sentiment = raw.strip().lower()
+                score = None
+            return {"sentiment": sentiment, "score": score}
 
     async def _arun(self, text: str) -> Dict[str, Any]:
         return self._run(text)
@@ -210,8 +224,6 @@ class DashboardTool(BaseTool):
         return self._run(batch_json)
 
 
-from typing import List, Dict, Any
-
 class SupportIngestionTool(BaseTool):
     name: str = "ingest_support"
     description: str = (
@@ -221,19 +233,187 @@ class SupportIngestionTool(BaseTool):
         "- texto (campo text)\n"
         "- timestamp (campo created_at)"
     )
+    sample_size: int = 10
+
+    def __init__(self, sample_size: int = 10, **kwargs):
+        super().__init__(**kwargs)
+        object.__setattr__(self, "sample_size", sample_size)
 
     def _run(self, file_path: str) -> List[Dict[str, Any]]:
         registros = []
         with open(file_path, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            for fila in reader:
+            for i, fila in enumerate(reader):
+                if i >= self.sample_size:
+                    break
                 registros.append({
-                    "id":        fila["tweet_id"],
-                    "canal":     "soporte",
-                    "texto":     fila["text"],
-                    "timestamp": fila["created_at"],
+                    "id":                     fila["tweet_id"],
+                    "canal":                  "soporte",
+                    "texto":                  fila["text"],
+                    "timestamp":              fila["created_at"],
+                    "author_id":              fila.get("author_id"),
+                    "inbound":                fila.get("inbound"),
+                    "response_tweet_id":      fila.get("response_tweet_id"),
+                    "in_response_to_tweet_id":fila.get("in_response_to_tweet_id"),
                 })
         return registros
 
     async def _arun(self, file_path: str) -> List[Dict[str, Any]]:
         return self._run(file_path)
+
+
+# 1) Language detection
+class LanguageDetectionTool(BaseTool):
+    name: str = "detect_language"
+    description: str = "Detecta el idioma de un texto y devuelve su código ISO."
+    _prompt: PromptTemplate = PrivateAttr()
+    _pipeline: Any        = PrivateAttr()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._prompt = PromptTemplate(
+            input_variables=["text"],
+            template="Detect the language of the following text and respond with ONLY the ISO 639-1 code (e.g., 'en', 'es'):\n\n{text}"
+        )
+        self._pipeline = self._prompt | llm
+
+    def _run(self, text: str) -> Dict[str, Any]:
+        raw = self._pipeline.invoke({"text": text}).strip()
+        match = re.search(r"\b[a-z]{2}\b", raw.lower())
+        code = match.group(0) if match else raw.lower().split()[0]
+        return {"language": code}
+
+    async def _arun(self, text: str) -> Dict[str, Any]:
+        return self._run(text)
+
+# 2) Urgency assessment
+class UrgencyAssessmentTool(BaseTool):
+    name: str = "assess_urgency"
+    description: str = "Evalúa la urgencia de un texto. Devuelve JSON {'urgency':'alta|media|baja'}."
+    _prompt: PromptTemplate = PrivateAttr()
+    _pipeline: Any        = PrivateAttr()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._prompt = PromptTemplate(
+            input_variables=["text"],
+            template=(
+                "Based on the following text, assess its urgency level. "
+                "Return only JSON: {{\"urgency\":\"alta|media|baja\"}}.\n\n{text}"
+            )
+        )
+        self._pipeline = self._prompt | llm
+
+    def _run(self, text: str) -> Dict[str, Any]:
+        raw = self._pipeline.invoke({"text": text})
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            # Fallback when model returns only the label
+            urgency = raw.strip().strip('"')
+            return {"urgency": urgency}
+
+    async def _arun(self, text: str) -> Dict[str, Any]:
+        return self._run(text)
+
+# 3) Emotion analysis
+class EmotionAnalysisTool(BaseTool):
+    name: str = "emotion_analysis"
+    description: str = "Clasifica la emoción principal: anger, joy, sadness o surprise."
+    _prompt: PromptTemplate = PrivateAttr()
+    _pipeline: Any        = PrivateAttr()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._prompt = PromptTemplate(
+            input_variables=["text"],
+            template=(
+                "Classify the primary emotion of this text. "
+                "Return only one of: anger, joy, sadness, surprise.\n\n{text}"
+            )
+        )
+        self._pipeline = self._prompt | llm
+
+    def _run(self, text: str) -> Dict[str, Any]:
+        emotion = self._pipeline.invoke({"text": text}).strip().lower()
+        return {"emotion": emotion}
+
+    async def _arun(self, text: str) -> Dict[str, Any]:
+        return self._run(text)
+
+# 5) Keyword extraction
+class KeywordExtractorTool(BaseTool):
+    name: str = "extract_keywords"
+    description: str = "Extrae las palabras clave más importantes de un texto."
+    _prompt: PromptTemplate = PrivateAttr()
+    _pipeline: Any        = PrivateAttr()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._prompt = PromptTemplate(
+            input_variables=["text"],
+            template=(
+                "Given the following text, extract the most relevant key phrases or keywords "
+                "that summarize its main content. "
+                "Return ONLY a JSON array of strings (e.g., [\"phrase1\", \"phrase2\"]).\n\n"
+                "Text:\n\n"
+                "{text}"
+            )
+        )
+        # Model should not echo instructions, only output JSON list
+        self._pipeline = self._prompt | llm
+
+    def _run(self, text: str) -> Dict[str, Any]:
+        raw = self._pipeline.invoke({"text": text})
+        try:
+            kws = json.loads(raw)
+        except json.JSONDecodeError:
+            # Try fixing single quotes
+            try:
+                kws = json.loads(raw.replace("'", '"'))
+            except Exception:
+                # As last resort, split on commas/brackets
+                kws = [w.strip() for w in re.split(r"[,\[\]]+", raw) if w.strip()]
+        return {"keywords": kws}
+
+    async def _arun(self, text: str) -> Dict[str, Any]:
+        return self._run(text)
+
+# 7) Duplicate detection
+class DuplicateDetectionTool(BaseTool):
+    name: str = "detect_duplicate"
+    description: str = (
+        "Detecta si un texto es duplicado de un listado previo. "
+        "Recibe 'batch_json|||text' y devuelve {'duplicate': True|False}."
+    )
+
+    def _run(self, args: str) -> Dict[str, Any]:
+        batch_json, text = args.split("|||", 1)
+        records = [json.loads(line) for line in batch_json.splitlines()]
+        texts = [r.get("texto","") for r in records]
+        return {"duplicate": text in texts}
+
+    async def _arun(self, args: str) -> Dict[str, Any]:
+        return self._run(args)
+
+# 10) Response suggestion
+class ResponseSuggestionTool(BaseTool):
+    name: str = "suggest_response"
+    description: str = "Genera un borrador de respuesta para un registro dado."
+    _prompt: PromptTemplate = PrivateAttr()
+    _pipeline: Any        = PrivateAttr()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._prompt = PromptTemplate(
+            input_variables=["text"],
+            template="Generate a polite and concise response to the following message:\n\n{text}"
+        )
+        self._pipeline = self._prompt | llm
+
+    def _run(self, text: str) -> Dict[str, Any]:
+        draft = self._pipeline.invoke({"text": text}).strip()
+        return {"response_draft": draft}
+
+    async def _arun(self, text: str) -> Dict[str, Any]:
+        return self._run(text)
