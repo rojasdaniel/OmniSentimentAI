@@ -524,6 +524,7 @@ class SupportAreaAssignmentTool(BaseTool):
         return self._run(text, record_id=record_id)
 
 # 7) Duplicate detection
+
 class DuplicateDetectionTool(BaseTool):
     name: str = "detect_duplicate"
     description: str = (
@@ -539,6 +540,39 @@ class DuplicateDetectionTool(BaseTool):
 
     async def _arun(self, args: str) -> Dict[str, Any]:
         return self._run(args)
+
+# Sarcasm detection tool
+class SarcasmDetectionTool(BaseTool):
+    name: str = "detect_sarcasm"
+    description: str = "Detecta si un texto contiene sarcasmo o ironía. Devuelve JSON {'sarcasm': true|false}."
+    _prompt: PromptTemplate = PrivateAttr()
+    _pipeline: Any         = PrivateAttr()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._prompt = PromptTemplate(
+            input_variables=["text"],
+            template=(
+                "You are a sarcasm detection assistant. Analyze the following text and determine whether it "
+                "contains sarcasm or irony. Return a JSON object with a boolean field 'sarcasm'. "
+                "Example: {{\"sarcasm\": true}} if sarcastic, {{\"sarcasm\": false}} otherwise.\n\n"
+                "Text:\n{text}"
+            )
+        )
+        self._pipeline = self._prompt | llm
+
+    def _run(self, text: str) -> Dict[str, Any]:
+        raw = self._pipeline.invoke({"text": text}).strip()
+        try:
+            parsed = json.loads(raw)
+            sarcasm_flag = bool(parsed.get("sarcasm", False))
+        except Exception:
+            # fallback: simple keyword check
+            sarcasm_flag = "sure" in text.lower() or "yeah right" in text.lower()
+        return {"sarcasm": sarcasm_flag}
+
+    async def _arun(self, text: str) -> Dict[str, Any]:
+        return self._run(text)
 
 # 10) Response suggestion
 

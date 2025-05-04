@@ -142,70 +142,55 @@ if "keywords" in df_support.columns:
 # 4) Título y secciones por canal
 st.title("OmniSentimentAI Dashboard")
 
-tweets_col, support_col = st.columns(2)
+# Crear pestañas para separar Tweets y Soporte
+tab_tweets, tab_support = st.tabs(["Tweets", "Support"])
 
-with tweets_col:
+with tab_tweets:
     st.header("Tweets Dashboard")
     st.dataframe(df_tweets, use_container_width=True)
     if "sentiment" in df_tweets.columns:
         st.subheader("Sentiment Distribution (Tweets)")
         st.bar_chart(df_tweets["sentiment"].value_counts())
-    else:
-        st.warning("No se encontró la columna 'sentiment' en tweets_dashboard.csv")
-
-
-    # -- Language distribution --
     if "language" in df_tweets.columns:
         st.subheader("Language Distribution")
         st.bar_chart(df_tweets["language"].value_counts())
-
-    # -- Emotion distribution --
     if "emotion" in df_tweets.columns:
         st.subheader("Emotion Distribution")
         st.bar_chart(df_tweets["emotion"].value_counts())
-
-    # -- Urgency distribution --
     if "urgency" in df_tweets.columns:
         st.subheader("Urgency Distribution")
         st.bar_chart(df_tweets["urgency"].value_counts())
-
-    # -- Top Keywords --
     if "support_area" in df_tweets.columns:
-        st.subheader("Top Support Area")
+        st.subheader("Top Support Area (Tweets)")
         top_kw = df_tweets["support_area"].explode().value_counts().head(10)
         st.bar_chart(top_kw)
+    if "sarcasm" in df_tweets.columns:
+        st.subheader("Sarcasm Detection (Tweets)")
+        # Convert boolean to string for counting
+        st.bar_chart(df_tweets["sarcasm"].astype(str).value_counts())
 
-
-with support_col:
+with tab_support:
     st.header("Support Dashboard")
     st.dataframe(df_support, use_container_width=True)
     if "sentiment" in df_support.columns:
         st.subheader("Sentiment Distribution (Support)")
         st.bar_chart(df_support["sentiment"].value_counts())
-    else:
-        st.warning("No se encontró la columna 'sentiment' en support_dashboard.csv")
-
-
-    # -- Language distribution --
-    if "language" in df_support.columns:
+    if "language" in df_support.columns: 
         st.subheader("Language Distribution (Support)")
         st.bar_chart(df_support["language"].value_counts())
-
-    # -- Emotion distribution --
     if "emotion" in df_support.columns:
         st.subheader("Emotion Distribution (Support)")
         st.bar_chart(df_support["emotion"].value_counts())
-
-    # -- Urgency distribution --
     if "urgency" in df_support.columns:
         st.subheader("Urgency Distribution (Support)")
         st.bar_chart(df_support["urgency"].value_counts())
-
-    # -- Top Keywords --
     if "support_area" in df_support.columns:
         st.subheader("Top Support Area (Support)")
         top_kw_s = df_support["support_area"].explode().value_counts().head(10)
         st.bar_chart(top_kw_s)
+    if "sarcasm" in df_support.columns:
+        st.subheader("Sarcasm Detection (Support)")
+        st.bar_chart(df_support["sarcasm"].astype(str).value_counts())
 
 
 

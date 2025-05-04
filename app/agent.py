@@ -21,13 +21,13 @@ from app.tool import (
     SentimentToolEn,
     IntentToolEn,
     AlertTool,
-    DashboardTool,
     LanguageDetectionTool,
     UrgencyAssessmentTool,
     EmotionAnalysisTool,
     SupportAreaAssignmentTool,
     DuplicateDetectionTool,
     ResponseSuggestionTool,
+    SarcasmDetectionTool
 )
 
 # Descargar stopwords una sola vez
@@ -46,6 +46,8 @@ class OmniState(TypedDict, total=False):
     support: List[Dict[str, Any]]
     support_records: List[Dict[str, Any]]
     support_dashboard: str
+
+
 
 def chat_node(state: OmniState) -> Dict[str, Any]:
     """
@@ -118,6 +120,8 @@ def analyze_tweets(state: OmniState) -> Dict[str, Any]:
             "id": d["id"],
             "canal": d.get("canal"),
             "user": d.get("user"),
+            "timestamp": d.get("timestamp"),
+            "query": d.get("query"),
             "texto": d.get("texto"),
             "language": d.get("language"),
             "sentiment": s.get("sentiment"),
@@ -176,6 +180,10 @@ def analyze_support(state: OmniState) -> Dict[str, Any]:
             "id": d["id"],
             "canal": d["canal"],
             "author_id": d.get("author_id"),
+            "timestamp": d.get("timestamp"),
+            "inbound": d.get("inbound"),
+            "response_tweet_id": d.get("response_tweet_id"),
+            "in_response_to_tweet_id": d.get("in_response_to_tweet_id"),
             "language": d.get("language"),
             "topic": d["topic"],
             "texto": d.get("texto"),
@@ -253,6 +261,13 @@ def detect_language_tweets(state: OmniState) -> Dict[str, Any]:
     print(f">> [detect_language_tweets] detected languages for {len(tweets)} tweets")
     return {"tweets": tweets}
 
+def detect_sarcasm_tweets(state: OmniState) -> Dict[str, Any]:
+    tweets = state.get("tweets", [])
+    for d in tweets:
+        d["sarcasm"] = SarcasmDetectionTool().run(d.get("texto", ""))["sarcasm"]
+    print(f">> [detect_sarcasm_tweets] detected sarcasm for {len(tweets)} tweets")
+    return {"tweets": tweets}
+
 def detect_language_support(state: OmniState) -> Dict[str, Any]:
     """
     Detecta el idioma de cada registro de soporte y lo anota en state['support'].
@@ -264,7 +279,12 @@ def detect_language_support(state: OmniState) -> Dict[str, Any]:
     print(f">> [detect_language_support] detected languages for {len(support)} support records")
     return {"support": support}
 
-import hashlib
+def detect_sarcasm_support(state: OmniState) -> Dict[str, Any]:
+    support = state.get("support", [])
+    for d in support:
+        d["sarcasm"] = SarcasmDetectionTool().run(d.get("texto", ""))["sarcasm"]
+    print(f">> [detect_sarcasm_support] detected sarcasm for {len(support)} support records")
+    return {"support": support}
 
 def load_cache(path):
     """
@@ -365,6 +385,9 @@ builder = StateGraph(OmniState)
 # Tweets pipeline
 builder.add_node("ingest_tweets",    ingest_tweets)
 builder.add_node("detect_language_tweets", detect_language_tweets)
+builder.add_node("detect_sarcasm_tweets", detect_sarcasm_tweets)
+builder.add_edge("detect_language_tweets", "detect_sarcasm_tweets")
+builder.add_edge("detect_sarcasm_tweets", "pre_tweets")
 builder.add_node("pre_tweets",       preprocess_tweets)
 builder.add_node("an_tweets",        analyze_tweets)
 builder.add_node("dedupe_tweets",    dedupe_tweets)
@@ -375,6 +398,9 @@ builder.add_node("dashboard_tweets", dashboard_tweets)
 # Support pipeline
 builder.add_node("ingest_support",    ingest_support)
 builder.add_node("detect_language_support", detect_language_support)
+builder.add_node("detect_sarcasm_support", detect_sarcasm_support)
+builder.add_edge("detect_language_support", "detect_sarcasm_support")
+builder.add_edge("detect_sarcasm_support", "pre_support")
 builder.add_node("pre_support",       preprocess_support)
 builder.add_node("topic_support",     topic_support)
 builder.add_node("an_support",        analyze_support)
@@ -393,7 +419,6 @@ builder.add_edge(START,         "ingest_support")
 
 # Tweets flow
 builder.add_edge("ingest_tweets",         "detect_language_tweets")
-builder.add_edge("detect_language_tweets","pre_tweets")
 builder.add_edge("pre_tweets",     "an_tweets")
 builder.add_edge("an_tweets",      "dedupe_tweets")
 builder.add_edge("dedupe_tweets",  "enrich_tweets")
@@ -403,7 +428,6 @@ builder.add_edge("dashboard_tweets", "merge_end")
 
 # Support flow
 builder.add_edge("ingest_support",          "detect_language_support")
-builder.add_edge("detect_language_support","pre_support")
 builder.add_edge("pre_support",      "topic_support")
 builder.add_edge("topic_support",    "an_support")
 builder.add_edge("an_support",       "dedupe_support")
